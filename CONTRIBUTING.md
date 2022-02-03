@@ -53,9 +53,9 @@ Kok Wei Chee, $14200, team developer
 
 2021:
 
-Many thanks to Chris Sun for his attempts to find collaborators!
+Many thanks to Chris Sun for his efforts to find collaborators!
 
-Kok Wei Chee, $20,800, lead developer, January-November
+Kok Wei Chee, $22000. lead developer, January-December
 
 Khanh Nguyen, $5000, team developer, April-October
 
@@ -67,6 +67,9 @@ Yura Guruel, $1000: various, May-July
 
 Aqib Mumtaz and Ayesha Ali, $1400: audio interfacing for 1D alg, April-May
 
+2022: 
+
+Kok Wei Chee, $2240: lead developer, January
 
 
 
