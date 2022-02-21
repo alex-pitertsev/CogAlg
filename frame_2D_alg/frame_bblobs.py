@@ -23,45 +23,57 @@ param_names = ["I", "G", "M", "A"]
 
 class Cderp(ClusterStructure):  # set of derivatives per blob param
 
-    p = int  # compared blob param
-    rp = int  # mean p in rng    dy = int
-    dx = int
-    m = int
-    distance = int  # common per derp_
+    p = int  # last compared blob param
+    s = int  # p summed in rng
+    d = int
+    m  = int
+    dbox = list  # directional distance, but same for all params?
+    rdn  = int  # summed param rdn
+    subM = int  # match from comp_sublayers, if any
+    subD = int  # diff from comp_sublayers, if any
+    roots = lambda: [[], []]  # [Ppm,Ppd]: Pps that derp is in, to join rderp_s, or Rderp for rderp
+    ''' old:
     blob = object
     _blob = object
-    subH = object  # represents hierarchy of sub_blobs, if any
+    sub_H = object  # hierarchy of sub_blobs, if any '''
+    # in Rderps:
+    rderp_ = list  # fixed rng of comparands
+    aderp = object  # anchor derp
 
-class CpBlob(CBlob, Cderp):
-    # may not be needed
+class CpBlob(CBlob, Cderp):  # probably not be needed
     # base params are retrieved from CBlob and Cderp
     # layer1 = dict       # Cdert layer params
     # derp_ = list
     # blob_ = list
+    dert__ = object
     root = object
+    sublayers = list
 
-def frame_bblobs_root(frame, intra, render, verbose):
+def frame_bblobs_root(root, intra, render, verbose):
     '''
     root function of comp_blob: cross compare blobs with their adjacent blobs in frame.blob_, including sublayers
     '''
-    blob_ = frame.sublayers[-1]
+    blob_ = root.sublayers[-1]
 
     derp_t = cross_comp(blob_)
-    pBlob_t = []
+    sublayer0 = []  # pBlob_  (flat version)
     I = A = Dy = Dx = M = 0
 
+    # how about rdn, d and m param?
     for param_name, derp_ in zip(param_names, derp_t):
         pBlob_ = form_bblob_(derp_)
         I  += sum([pBlob.I  for pBlob in pBlob_])
         Dy += sum([pBlob.Dy for pBlob in pBlob_])
         Dx += sum([pBlob.Dx for pBlob in pBlob_])
         M  += sum([pBlob.M  for pBlob in pBlob_])
-        A  += sum([pBlob.A for pBlob in pBlob_])
-        pBlob_t += [pBlob_]  # to form blobs of blobs, connected by mutual match
+        A  += sum([pBlob.A  for pBlob in pBlob_])
+        sublayer0 += [pBlob_]  # to form blobs of blobs, connected by mutual match
 
-    new_frame = CpBlob(I=I, Dy=Dy, Dx=Dx, M=M, A=A, sublayers=[blob_, pBlob_t], dert__=[frame.dert__, derp_t])
+        # intra section here?
 
-    return new_frame
+    new_root = CpBlob(I=I, Dy=Dy, Dx=Dx, M=M, A=A, sublayers=[blob_, sublayer0], dert__=derp_t)
+
+    return new_root
 
 def cross_comp(blob_):
 
@@ -114,18 +126,19 @@ def comp_par(_blob, _param, param, param_name, ave):
     return derp
 
 # very initial draft
+# need to add adj_bblob here, not sure how yet
 def form_bblob_(derp_):
 
     pBlob_ = []
     for derp in derp_:
-        if derp.M>0:  # positve derp only?
-            if "pBlob" in locals():
-                pBlob.accum_from(derp)
-                pBlob.L += 1
-            else:
+        if derp.m>0:  # positve derp only?
+            if "pBlob" not in locals():
                 pBlob = CpBlob(dert__ = [derp], L=1)
                 pBlob_.append(pBlob)
-                pBlob.accum_from(derp)
+            pBlob.accum_from(derp)
+        else:
+            if "pBlob" in locals():
+                del pBlob
 
     return pBlob_
 '''

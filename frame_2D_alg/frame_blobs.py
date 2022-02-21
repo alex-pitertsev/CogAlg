@@ -34,7 +34,6 @@ import numpy as np
 from collections import deque, namedtuple
 # from frame_blobs_wrapper import wrapped_flood_fill, from utils import minmax, from time import time
 from draw_frame_blobs import visualize_blobs
-from intra_blob import *
 from class_cluster import ClusterStructure
 
 ave = 30  # filter or hyper-parameter, set as a guess, latter adjusted by feedback
@@ -43,8 +42,7 @@ ave_M = 100
 ave_mP = 100
 UNFILLED = -1
 EXCLUDED_ID = -2
-
-FrameOfBlobs = namedtuple('FrameOfBlobs', 'I, Dy, Dx, M, blob_, dert__')
+# FrameOfBlobs = namedtuple('FrameOfBlobs', 'I, Dy, Dx, M, blob_, dert__')
 
 class CBlob(ClusterStructure):
     # comp_pixel:
@@ -63,10 +61,7 @@ class CBlob(ClusterStructure):
     # frame_bblob:
     root_bblob = object
     sublevels = list  # input levels
-    # intra_blob params:
-    intra = lambda: Cintra
-
-class Cintra:  # intra_blob params:
+    # intra_blob params: # or pack in intra = lambda: Cintra
     # comp_angle:
     Dydy = float
     Dxdy = float
@@ -80,9 +75,9 @@ class Cintra:  # intra_blob params:
     prior_forks = list
     sublayers = list  # list of layers across sub_blob derivation tree, nested deeper layers, multiple forks
     Ls = int  # n sublayers, for visibility and next-fork rdn
-    f_comp_a = bool  # current fork is comp angle, else comp_r
+    fBa = bool  # current fork is comp angle, else comp_r
     fflip = bool  # x-y swap
-    rdn = float  # redundancy to higher blob layers
+    rdn = float  # redundancy to higher blob layers, or combined?
     rng = int  # comp range, set before intra_comp
     # comp_slice:
     dir_blobs = list  # primarily vertically | laterally oriented edge blobs
@@ -96,6 +91,7 @@ class Cintra:  # intra_blob params:
     derPd__ = list
     Pd__ = list
 
+
 def frame_blobs_root(image, intra=False, render=False, verbose=False, use_c=False):
 
     if verbose: start_time = time()
@@ -106,22 +102,23 @@ def frame_blobs_root(image, intra=False, render=False, verbose=False, use_c=Fals
         frame, idmap, adj_pairs = wrapped_flood_fill(dert__)
 
     else:  # [flood_fill](https://en.wikipedia.org/wiki/Flood_fill)
-        blob_, idmap, adj_pairs = flood_fill(dert__, sign__=dert__[3] > 0,  verbose=verbose)
+        blob_, idmap, adj_pairs = flood_fill(dert__, sign__=dert__[3] > 0,  verbose=verbose)  # dert__[3]: m
         I, Dy, Dx, M = 0, 0, 0, 0
         for blob in blob_:
             I += blob.I
             Dy += blob.Dy
             Dx += blob.Dx
             M += blob.M
-        frame = CBlob(I=I, Dy=Dy, Dx=Dx, M=M, sublayers=[blob_], dert__=[dert__])
+        frame = CBlob(I=I, Dy=Dy, Dx=Dx, M=M, sublayers=[blob_], dert__=dert__)
 
     assign_adjacents(adj_pairs)  # f_segment_by_direction=False
 
-    if verbose: print(f"{len(frame.levels[-1])} blobs formed in {time() - start_time} seconds")
-    if render: visualize_blobs(idmap, frame.sublayers[-1])
+    if verbose: print(f"{len(frame.sublayers[0])} blobs formed in {time() - start_time} seconds")
+    if render: visualize_blobs(idmap, frame.sublayers[0])
 
-    if intra:  # call to intra_blob, omit for testing frame_blobs only:
+    if intra:  # omit for testing frame_blobs alone:
         if verbose: print("\rRunning frame's intra_blob...")
+        from intra_blob import intra_blob_root
         intra_blob_root(frame, render, verbose)
 
     return frame
@@ -141,7 +138,7 @@ def comp_pixel(image):  # 2x2 pixel cross-correlation within image, see comp_pix
     rp__ = topleft__ + topright__ + bottomleft__ + bottomright__  # sum of 4 rim pixels -> mean, not summed in blob param
 
     return (topleft__, d_upleft__, d_upright__, M__, rp__)  # tuple of 2D arrays per param of dert (derivatives' tuple)
-    # renamed dert__ = (i__, dy__, dx__, m__, ri__) for readability in functions below
+    # renamed dert__ = (i__, dy__, dx__, m__, ri__) for readability in deeper functions
 '''
     old version:
     Gy__ = ((bottomleft__ + bottomright__) - (topleft__ + topright__))  # decomposition of two diagonal differences into Gy
@@ -150,21 +147,18 @@ def comp_pixel(image):  # 2x2 pixel cross-correlation within image, see comp_pix
 
 def flood_fill(dert__, sign__, verbose=False, mask__=None, blob_cls=CBlob, fseg=False, prior_forks=[]):
 
-    if mask__ is None: # non intra dert
-        height, width = dert__[0].shape
-    else: # intra dert
-        height, width = mask__.shape
+    if mask__ is None: height, width = dert__[0].shape  # init dert__
+    else:              height, width = mask__.shape  # intra dert__
 
     idmap = np.full((height, width), UNFILLED, 'int64')  # blob's id per dert, initialized UNFILLED
     if mask__ is not None:
         idmap[mask__] = EXCLUDED_ID
     if verbose:
-        step = 100 / height / width     # progress % percent per pixel
-        progress = 0.0
-        print(f"\rClustering... {round(progress)} %", end="");  sys.stdout.flush()
-
+        step = 100 / height / width  # progress % percent per pixel
+        progress = 0.0; print(f"\rClustering... {round(progress)} %", end="");  sys.stdout.flush()
     blob_ = []
     adj_pairs = set()
+
     for y in range(height):
         for x in range(width):
             if idmap[y, x] == UNFILLED:  # ignore filled/clustered derts
@@ -184,7 +178,7 @@ def flood_fill(dert__, sign__, verbose=False, mask__=None, blob_cls=CBlob, fseg=
                     blob.accumulate(I  = dert__[4][y1][x1],  # rp__,
                                     Dy = dert__[1][y1][x1],
                                     Dx = dert__[2][y1][x1],
-                                    M  = dert__[3][y1][x1]) # M -= g
+                                    M  = dert__[3][y1][x1])  # M -= g
                     if len(dert__) > 5: # comp_angle
                         blob.accumulate(Dydy = dert__[5][y1][x1],
                                         Dxdy = dert__[6][y1][x1],
@@ -195,17 +189,12 @@ def flood_fill(dert__, sign__, verbose=False, mask__=None, blob_cls=CBlob, fseg=
                         blob.accumulate(Mdx = dert__[10][y1][x1],
                                         Ddx = dert__[11][y1][x1])
                     blob.A += 1
-
-                    if y1 < y0:
-                        y0 = y1
-                    elif y1 > yn:
-                        yn = y1
-                    if x1 < x0:
-                        x0 = x1
-                    elif x1 > xn:
-                        xn = x1
-                    # determine neighbors' coordinates, 4 for -, 8 for +
-                    if blob.sign or fseg:   # include diagonals
+                    if y1 < y0:   y0 = y1
+                    elif y1 > yn: yn = y1
+                    if x1 < x0:   x0 = x1
+                    elif x1 > xn: xn = x1
+                    # neighbors coordinates, 4 for -, 8 for +
+                    if blob.M>0 or fseg:   # include diagonals
                         adj_dert_coords = [(y1 - 1, x1 - 1), (y1 - 1, x1),
                                            (y1 - 1, x1 + 1), (y1, x1 + 1),
                                            (y1 + 1, x1 + 1), (y1 + 1, x1),
@@ -213,38 +202,32 @@ def flood_fill(dert__, sign__, verbose=False, mask__=None, blob_cls=CBlob, fseg=
                     else:
                         adj_dert_coords = [(y1 - 1, x1), (y1, x1 + 1),
                                            (y1 + 1, x1), (y1, x1 - 1)]
-
-                    # search through neighboring derts
+                    # search neighboring derts:
                     for y2, x2 in adj_dert_coords:
-                        # check if image boundary is reached
+                        # image boundary is reached:
                         if (y2 < 0 or y2 >= height or
                             x2 < 0 or x2 >= width or
                             idmap[y2, x2] == EXCLUDED_ID):
                             blob.fopen = True
-                        # check if filled
+                        # pixel is filled:
                         elif idmap[y2, x2] == UNFILLED:
-                            # check if same-signed
-                            if blob.sign == sign__[y2, x2]:
+                            # same-sign dert:
+                            if (blob.M>0) == sign__[y2, x2]:
                                 idmap[y2, x2] = blob.id  # add blob ID to each dert
                                 unfilled_derts.append((y2, x2))
                         # else check if same-signed
-                        elif blob.sign != sign__[y2, x2]:
+                        elif (blob.M>0) != sign__[y2, x2]:
                             adj_pairs.add((idmap[y2, x2], blob.id))     # blob.id always bigger
-
                 # terminate blob
-                yn += 1
-                xn += 1
+                yn += 1; xn += 1
                 blob.box = y0, yn, x0, xn
                 blob.dert__ = tuple([param_dert__[y0:yn, x0:xn] for param_dert__ in blob.root_dert__])
                 blob.mask__ = (idmap[y0:yn, x0:xn] != blob.id)
                 blob.adj_blobs = [[],[]] # iblob.adj_blobs[0] = adj blobs, blob.adj_blobs[1] = poses
 
                 if verbose:
-                    progress += blob.A * step
-                    print(f"\rClustering... {round(progress)} %", end="")
-                    sys.stdout.flush()
-    if verbose:
-        print("")
+                    progress += blob.A * step; print(f"\rClustering... {round(progress)} %", end=""); sys.stdout.flush()
+    if verbose: print("")
 
     return blob_, idmap, adj_pairs
 
@@ -254,7 +237,6 @@ def assign_adjacents(adj_pairs, blob_cls=CBlob):  # adjacents are connected oppo
     Assign adjacent blobs bilaterally according to adjacent pairs' ids in blob_binder.
     '''
     for blob_id1, blob_id2 in adj_pairs:
-        assert blob_id1 < blob_id2
         blob1 = blob_cls.get_instance(blob_id1)
         blob2 = blob_cls.get_instance(blob_id2)
 
@@ -268,8 +250,10 @@ def assign_adjacents(adj_pairs, blob_cls=CBlob):  # adjacents are connected oppo
         elif y01 > y02 and x01 > x02 and yn1 < yn2 and xn1 < xn2:
             pose1, pose2 = 1, 0  # 1: external, 0: internal
         else:
-            raise ValueError("something is wrong with pose")
-
+            if blob2.A > blob1.A:
+                pose1, pose2 = 0, 1  # 0: internal, 1: external
+            else:
+                pose1, pose2 = 1, 0  # 1: external, 0: internal
         # bilateral assignments
         '''
         if f_segment_by_direction:  # pose is not needed
@@ -282,22 +266,19 @@ def assign_adjacents(adj_pairs, blob_cls=CBlob):  # adjacents are connected oppo
         blob2.adj_blobs[1].append(pose1)
 
 
-
-
 if __name__ == "__main__":
     import argparse
     from time import time
     from utils import imread
-    from intra_blob import intra_blob_root
-    from frame_recursive import frame_recursive
 
     # Parse arguments
     argument_parser = argparse.ArgumentParser()
     argument_parser.add_argument('-i', '--image', help='path to image file', default='./images//toucan.jpg')
     argument_parser.add_argument('-v', '--verbose', help='print details, useful for debugging', type=int, default=1)
-    argument_parser.add_argument('-n', '--intra', help='run intra_blobs after frame_blobs', type=int, default=0)
     argument_parser.add_argument('-r', '--render', help='render the process', type=int, default=0)
     argument_parser.add_argument('-c', '--clib', help='use C shared library', type=int, default=0)
+    argument_parser.add_argument('-n', '--intra', help='run intra_blobs after frame_blobs', type=int, default=0)
+    argument_parser.add_argument('-e', '--extra', help='run frame_recursive after frame_blobs', type=int, default=0)
     args = argument_parser.parse_args()
     image = imread(args.image)
     verbose = args.verbose
@@ -306,11 +287,13 @@ if __name__ == "__main__":
 
     start_time = time()
 
-    frame = frame_recursive(image, intra, render, verbose)
-
+    if args.extra:
+        from frame_recursive import frame_recursive
+        frame = frame_recursive(image, intra, render, verbose)
+    else:
+        frame = frame_blobs_root(image, intra, render, verbose)
 
     end_time = time() - start_time
-
     if args.verbose:
         print(f"\nSession ended in {end_time:.2} seconds", end="")
     else:
