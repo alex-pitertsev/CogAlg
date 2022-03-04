@@ -86,10 +86,12 @@ aves = [ave_mL, ave_mI, ave_mD, ave_mM]
     postfix '_' denotes array name, vs. same-name elements
     prefix '_'  denotes prior of two same-name variables
     prefix 'f'  denotes flag
-    capitalized variables are normally summed small-case variables
+    1-3 letter names are normally scalars, except for P and similar classes, 
+    capitalized variables are normally summed small-case variables,
+    longer names are normally classes
 '''
 
-def line_PPs_root(P_t):  # P_T is P_t = [Pm_, Pd_];  higher-level input is nested to the depth = 1 + 2*elevation (level counter)
+def line_PPs_root(P_t):  # P_t = [Pm_, Pd_];  higher-level input is nested to the depth = 1 + 2*elevation (level counter)
 
     norm_feedback(P_t)
     sublayer0 = []
@@ -116,7 +118,7 @@ def line_PPs_root(P_t):  # P_T is P_t = [Pm_, Pd_];  higher-level input is neste
 
     root.levels.append(root.sublayers)  # to contain 1st and 2nd levels
 
-    return root  # Pp tuple?    P_ttt: (Pm_, Pd_, each:( Lmd, Imd, Dmd, Mmd, each: ( Ppm_, Ppd_)))
+    return root  # Pp, sublayers[0] is P_ttt: (Pm_, Pd_, each:( Lmd, Imd, Dmd, Mmd, each: ( Ppm_, Ppd_)))
 
 
 def cross_comp(P_, fPd):  # cross-compare patterns within horizontal line
@@ -318,6 +320,7 @@ def deriv_incr(rootPp, Pp_, hlayers):  # evaluate each Pp for incremental deriva
                 for _derp, derp in zip( Pp.derp_[:-1], Pp.derp_[1:]):  # or comp abs d, or step=2 for sign match?
                     dderp_ += [comp_par(_derp.P, _derp.d, derp.d, "D_", loc_ave * ave_mD)]  # cross-comp of ds
                     cD = sum( abs(dderp.d) for dderp in dderp_)
+
                 if cD > loc_ave_M * 4:  # fixed costs of clustering per Pp.derp_
                     sub_Ppm_, sub_Ppd_ = [], []
                     Pp.sublayers = [(sub_Ppm_, sub_Ppd_)]
@@ -353,6 +356,7 @@ def range_incr(rootPp, Pp_, hlayers, rng):  # evaluate each Pp for incremental r
             if Pp.M / Pp.L > loc_ave_M + 4:  # 4: search cost, + Pp.iM?
                 sub_search(Pp, fPd=False)
                 Rderp_, cM = comp_rng(Pp, loc_ave * ave_mI, rng)  # accumulates Rderps from fixed-rng rderp_
+
                 if cM > loc_ave_M * 4:  # current-rng M > fixed costs of clustering per Pp.derp_, else reuse it for multiple rmg+?
                     sub_Ppm_, sub_Ppd_ = [], []
                     Pp.sublayers = [(sub_Ppm_, sub_Ppd_)]
@@ -683,8 +687,7 @@ def search_rng(rootPp, loc_ave, rng):  # extended fixed-rng search-right for cor
     return Rderp_
 
 
-# only if oolp_Rderp not in _rPp.derp_, which is never true:
-
+# not used,  only if oolp_Rderp not in _rPp.derp_, which is never true:
 def eval_olp_recursive(Rderp, olp_dert, _rPp):
 
     if olp_dert.m + olp_dert.olp_M > ave_dir_m:  # ave_dir_m < ave, negative here, eval by anchor m + overlap m
