@@ -17,9 +17,9 @@ from segment_by_direction import segment_by_direction
 
 # filters, All *= rdn:
 ave = 50   # cost / dert: of cross_comp + blob formation, same as in frame blobs, use rcoef and acoef if different
-aveB = 50    # cost / blob loop: fixed syntactic overhead
-aveBa = 1.5  # average (rblob value / ablob value)
+aveB = 50  # cost / blob loop: fixed syntactic overhead
 pcoef = 2  # ave_comp_slice / ave: relative cost of p fork;  no ave_ga = .78, ave_ma = 2: no eval for comp_aa..
+aveBa = 1.5  # ave (rblob value / ablob value), replaced by pcoef?
 ave_nsub = 4  # ave n sub_blobs per blob: 4x higher costs? or eval costs only, separate clustering ave = aveB?
 # --------------------------------------------------------------------------------------------------------------
 # functions:
@@ -43,7 +43,7 @@ def intra_blob_root(root_blob, render, verbose, fBa):  # recursive evaluation of
                 AveB = aveB * (blob.rdn+1)  # comp_slice is doubling the costs, likely higher, adjust per nsub_blobs?
                 if (AveB - blob.G) + (blob.G - AveB * pcoef) > 0:  # val_comp_slice_blob = dev_G + inv_dev_Ga
                     blob.fBa = 0; blob.rdn = root_blob.rdn+1
-                    # comp_slice root(blob, verbose=True) (pending update)
+                    comp_slice_root(blob, verbose=True)
                     blob.prior_forks.extend('p')
                     if verbose: print('\nslice_blob fork\n')  # if render and blob.A < 100: deep_blobs.append(blob)
             else:
@@ -70,7 +70,7 @@ def intra_blob_root(root_blob, render, verbose, fBa):  # recursive evaluation of
                     # comp_a 2x2:
                     new_dert__, new_mask__ = comp_a(ext_dert__, ext_mask__)
                     Ave = ave * (blob.rdn + 1)
-                    sign__ = (new_dert__[3] - Ave) + (Ave * pcoef - new_dert__[9]) > 0  # val_comp_slice_= dev_gr + inv_dev_ga
+                    sign__ = (new_dert__[1] - Ave) + (Ave * pcoef - new_dert__[2]) > 0  # val_comp_slice_= dev_gr + inv_dev_ga
                     blob.prior_forks.extend('a')
                     # if min Ly and Lx, dert__>=1: form, splice sub_blobs:
                     if new_mask__.shape[0] > 2 and new_mask__.shape[1] > 2 and False in new_mask__:

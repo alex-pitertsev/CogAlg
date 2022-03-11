@@ -85,6 +85,7 @@ def line_level_root(root, types_):  # recursively adds higher levels of pattern 
                     new_M += sum([Pp.M for Pp in Pp_])  # Pp.M includes rng+ and der+ Ms
         else:
             new_types_ += [[] for _ in range(8)]  # align indexing with sublayer, replace with count of missing prior P_s, or use nested tuples?
+            new_sublayer0 += [[] for _ in range(8)]
 
     if len(sublayer0) / max(nextended,1) < 4 and new_M > ave_M * 4:  # ave_extend_ratio and added M, will be default if pipelined
         # cross_core_comp(new_sublayer0, new_types_)
@@ -97,12 +98,16 @@ def line_level_root(root, types_):  # recursively adds higher levels of pattern 
 
 # functions below are not used:
 
-def cross_core_comp(iP_T, types_):  # currently not used because:
-    # correlation is predetermined by derivation: rdn coefs, multiplied across derivation hierarchy, no need to compare?
+def cross_core_comp(iP_T, types_):
     '''
     compare same-type new params across different-type input Pp_s, separate from convertable dimensions|modalities: filter patterns
-    if increasing correlation between higher derivatives, of pattern-summed params,
-    similar to rng+, if >3 nesting levels in iP_T: root_depth - comparand_depth >3, which maps to the distance of >16 Pp_s?
+    if increasing correlation between higher derivatives, of pattern-summed params, similar to rng+? But no full P overlap.
+
+    currently not used because correlation is by derivation: rdn coefs, multiplied across derivation hierarchy, no need to compare?
+    but comp x Ps of params summed x sign, reducing rdn?
+
+    instead: cross-param m|d comb->PP per root P summed m_param: higher-resolution, Pp definitions are not relevant?
+    or comp x norm m_param: pairwise all-to-all, group by param, sum in root P to select for param set?
     '''
     xPp_t_ = []  # each element is from one elevation of nesting
     ntypes = 1 + 2 * math.log(len(iP_T) / 2, 8)  # number of types per P_ in iP_T, with (fPd, param_name) n_pairs = math.log(len(iP_T)/2, 8)
