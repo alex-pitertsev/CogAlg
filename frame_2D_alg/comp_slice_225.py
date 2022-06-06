@@ -695,3 +695,180 @@ def comp_layer(_derP, derP):
     L = xn-x0
 
     return CderP(x0=x0, L=L, y=_derP.y, mP=mP, dP=dP, params=derivatives, P=derP, _P=_derP)
+
+# 5.11:
+
+def comp_P_root(P__, rng, frng):  # vertically compares y-adjacent and x-overlapping Ps: blob slices, forming 2D derP__
+
+    # if der+: P__ is last-call derP__, derP__=[], form new derP__
+    # if rng+: P__ is last-call P__, accumulate derP__ with new_derP__
+    # 2D array of derivative tuples from P__[n], P__[n-rng], sub-recursive:
+    for P_ in P__:
+        for P in P_:
+            P.uplink_t, P.downlink_t = [[],[]],[[],[]]  # reset links and PP refs in the last layer only
+            P.root = object
+
+    for i, _P_ in enumerate(P__):  # higher compared row
+        if i+rng < len(P__):  # rng=1 unless rng+ fork
+            P_ = P__[i+rng]   # lower compared row
+            for P in P_:
+                if frng:
+                    scan_P_(P, _P_, frng)  # rng+, compare at input derivation, which is single P
+                else:
+                    for derP in P.uplink_t[0]:  # der+, compare at new derivation, which is derP_
+                        scan_P_(derP, _P_, frng)
+            _P_ = P_
+
+def scan_P_(P, _P_, frng):
+
+    for _P in _P_:  # higher compared row
+        if frng:
+            fbreak = comp_olp(P, _P, frng)
+        else:  # P is derP
+            for _derP in _P.uplink_t[0]:
+                fbreak = comp_olp(P, _derP, frng)  # comp derPs
+        if fbreak:
+            break
+
+def comp_olp(P, _P, frng):  # P, _P can be derP, _derP;  also form sub_Pds for comp_dx?
+
+    fbreak=0
+    if P.x0 - 1 < (_P.x0 + _P.L) and (P.x0 + P.L) + 1 > _P.x0:  # test x overlap(_P,P) in 8 directions, all Ps of +ve derts:
+
+        if isinstance(P, CPP) or isinstance(P, CderP):
+            derP = comp_layer(_P, P)  # form vertical derivatives of horizontal P params
+        else:
+            derP = comp_P(_P, P)  # form higher vertical derivatives of derP or PP params
+            derP.y = P.y
+            if frng:  # accumulate derP through rng+ recursion:
+                accum_layer(derP.params, P.params)
+                P.uplink_t[1].append(derP)  # per P for form_PP
+                _P.downlink_t[1].append(derP)
+
+    elif (P.x0 + P.L) < _P.x0:  # no P xn overlap, stop scanning lower P_
+        fbreak = 1
+
+    return fbreak
+
+
+def comp_P_rng(PP, rng, fPd):  # compare Ps over incremented range: P__[n], P__[n-rng], sub-recursive
+
+    reversed_P__ = []  # to rescan P__ bottom-up
+    for P_ in reversed(PP.P__):
+        reversed_P__ += [P_]
+        for P in P_:
+            P.downlink_layers = [[],[]]  # reset only downlinks, uplinks will be updated below
+            P.root = object  # reset links and PP refs in the last sub_P layer
+
+    for i, P_ in enumerate(reversed_P__):  # scan bottom up
+        if (i+rng) <= len(reversed_P__)-1:
+            _P_ = reversed_P__[i+rng]
+            for P in P_:
+                new_mixed_uplink_ = []
+                for _P in _P_:
+                    derP = comp_P(_P, P)  # forms vertical derivatives of P params
+                    new_mixed_uplink_ += [derP]       # new uplink per P
+                    _P.downlink_layers[1] += [derP]        # add downlink per _P
+                P.uplink_layers = [[], new_mixed_uplink_]  # update with new uplinks
+
+
+# draft, combine with comp_P_rng?
+def comp_P_der(PP, fPd):
+
+    reversed_P__ = []
+    for P_ in reversed(PP.P__):
+        reversed_P__ += [P_]
+        for P in P_:
+            for derP in P.uplink_layers[1] + P.downlink_layers[1]:  # reset all derP:
+                derP.uplink_layers = [[], []]
+                derP.downlink_layers = [[], []]
+                derP.root = object
+
+    for i, P_ in enumerate(reversed_P__):  # scan bottom up
+        if (i+1) <= len(reversed_P__)-1:
+            _P_ = reversed_P__[i+1]  # upper row's P
+            for P in P_:
+                if P.uplink_layers[0][0]:  # non empty derP
+                    derP = P.uplink_layers[0][0]
+                    for _P in _P_:
+                        if _P.uplink_layers[0][0]:  # non empty _derP
+                           _derP = _P.uplink_layers[0][0]
+                           dderP = comp_layer(_derP, derP)  # forms vertical derivatives of P params
+                           derP.uplink_layers[1] += [dderP]
+                           _derP.downlink_layers[1] += [dderP]
+
+def comp_branches(P, _P_, frng):
+
+    for _P in _P_:  # higher compared row
+        if frng:
+            if isinstance(P, CPP) or isinstance(P, CderP):  # rng+ fork for derPs, very unlikely
+                comp_derP(_P, P)  # form higher vertical derivatives of derP or PP params
+            else:
+                comp_P(_P, P)  # form vertical derivatives of horizontal P params
+        else:
+            for _derP in _P.uplink_layers[-1]:
+                comp_derP(_derP, P)  # P is actually derP, form higher vertical derivatives of derP or PP params
+
+
+def comp_P_sub(iP__, frng):  # sub_recursion in PP, if frng: rng+ fork, else der+ fork
+
+    P__ = [P_ for P_ in reversed(iP__)]  # revert to top-down
+    if frng:
+        uplinks__ = [[ [] for P in P_] for P_ in P__ ]  # init links per P
+        downlinks__ = deepcopy(uplinks__)  # same format, all empty
+    else:
+        derP__ = [[] for P_ in P__[:-1]]  # init derP rows, exclude bottom P row
+
+    for y, _P_ in enumerate( P__):  # always top-down, higher compared row
+        for x, _P in enumerate(_P_):
+            if frng:
+                for derP in _P.downlink_layers[-1]:  # lower comparands are linked Ps at dy = rng
+                    if derP.P in P__[y-1]:  # derP.P may not be in P__, which mean it is a branch and it is in another PP
+                        P = derP.P
+                        if isinstance(P, CPP) or isinstance(P, CderP):  # rng+ fork for derPs, very unlikely
+                            derP = comp_derP(P, _P)  # form higher vertical derivatives of derP or PP params
+                        else:
+                            derP = comp_P(P, _P)  # form vertical derivatives of horizontal P params
+                        # += links:
+                        downlinks__[y][x] += [derP]
+                        up_x = P__[y-1].index(P)  # index of P in P_ at y-1
+                        uplinks__[y-1][up_x] += [derP]
+            elif y < len(P__)-1:  # exclude last bottom P's derP
+                for _derP in _P.downlink_layers[-1]:  # der+, compare at current derivation, which is derPs
+                    for derP in _derP.P.downlink_layers[-1]:
+                        dderP = comp_derP(_derP, derP)  # form higher vertical derivatives of derP or PP params
+                        derP.uplink_layers[0] += [dderP]  # pre-init layer per derP
+                        _derP.downlink_layers[0] += [dderP]
+                        derP__[y].append(derP)
+    if frng:
+        for P_, uplinks_,downlinks_ in zip( P__, uplinks__, downlinks__):  # always top-down
+            for P, uplinks, downlinks in zip_longest(P_, uplinks_, downlinks_, fillvalue=[]):
+                P.uplink_layers += [uplinks]  # add link_layers to each P
+                P.downlink_layers += [downlinks]
+        return iP__
+    else:
+        return derP__
+
+def prune_branches(link_layers, fPd):  # links from prior comp_P, initially in x0 sequence
+
+    match_link_, miss_link_ = [],[]
+    link_layer = sorted(link_layers[-1], key=lambda derP:derP.params[fPd], reverse=False)
+
+    for i, derP in enumerate(link_layer):  # derPs are links between compared Ps
+
+        if fPd: derP.rdn += derP.params[0] > derP.params[1]  # mP > dP
+        else:   rng_eval(derP, fPd)  # resets derP val, rdn
+
+        if derP.params[fPd] > vaves[fPd] * (derP.rdn + len(match_link_)):  # val > ave * branch redundancy,
+            # the weaker links are redundant to the stronger, added to match_link_ in prior loops
+            match_link_.append(derP)  # derP._P.downlink_layers[-1].append(derP)
+            derP.P.uplink_layers[-1].append(derP)
+        else:
+            miss_link_ = link_layer[i:]
+            link_layers.append( match_link_)
+            break  # the rest of links is even weaker
+
+        if derP == link_layer[-1]:  # no prior break
+            link_layers.append(match_link_)
+
+    return miss_link_

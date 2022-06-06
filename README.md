@@ -3,19 +3,40 @@ CogAlg
 
 Full introduction: <www.cognitivealgorithm.info>
 
-Intelligence is a general cognitive ability, ultimately the ability to predict. That includes planning, which technically is a self-prediction. Any prediction is interactive projection of known patterns, hence the first step must be pattern discovery. Which is commonly called unsupervised learning, but any negation-first is obfuscating. These definitions are not terribly radical, pattern recognition is a core of any IQ test. But there is no conceptually consistent bottom-up implementation, so I had to design the process from the scratch.
+Intelligence is a general cognitive ability, ultimately the ability to predict. That includes planning, which is technically a self-prediction. Any prediction is interactive projection of known patterns, hence the first step must be pattern discovery (AKA unsupervised learning, but all such negation-first terms are obfuscating). My definitions are not terribly radical, pattern recognition is a core of any IQ test. But there is no conceptually consistent bottom-up implementation, so I had to design the process from the scratch.
 
-For excellent popular introductions to cognition-as-prediction perspective see “[On Intelligence](https://numenta.com/resources/on-intelligence/)” by Jeff Hawkins and “[How to Create a Mind](https://www.amazon.com/How-Create-Mind-Thought-Revealed/dp/0670025291/ref=cm_cr_pr_product_top)” by Ray Kurzweil. But on a technical level, they and most everyone else use neural nets, which work in a very coarse statistical fashion. [Capsule Networks](https://medium.com/ai%C2%B3-theory-practice-business/understanding-hintons-capsule-networks-part-i-intuition-b4b559d1159b), recently introduced by Geoffrey Hinton et al, are more local and selective by multiple instantiation parameters. But they still start with weighted summation per parameter, which degrades the data before any comparison and evaluation.
+For excellent popular introductions to cognition-as-prediction perspective see [On Intelligence](https://numenta.com/resources/on-intelligence/) by Jeff Hawkins and [How to Create a Mind](https://www.amazon.com/How-Create-Mind-Thought-Revealed/dp/0670025291/ref=cm_cr_pr_product_top) by Ray Kurzweil. But on a technical level, they and most everyone else use neural nets, which work in a very coarse statistical fashion. The best way to conceptualize basic NN: [multi-layer perceptron](https://towardsdatascience.com/what-the-hell-is-perceptron-626217814f53), is as fuzzy [centroid-based clustering](https://en.wikipedia.org/wiki/Cluster_analysis#Centroid-based_clustering): each node weighs the inputs, then sums them and normalizes the output as centroid of the inputs. 
 
-In the next section, I define atomic comparison and resulting patterns, then describe a hierarchically recursive algorithm of search for incrementally complex patterns. The following sections compare my scheme to ANN, BNN, and CapsNet. This is an open project, we need help with design and implementation: [WIKI](https://github.com/boris-kz/CogAlg/wiki). I pay for contributions or monthly if there is a track record, see [CONTRIBUTING](https://github.com/boris-kz/CogAlg/blob/master/CONTRIBUTING.md). 
+Top-layer output is compared to some template and resulting error is backpropagated to adjust the weights. Which is a soft clustering: weighing is modulated inclusion / exclusion of subsequent inputs into the output. But weighed summation degrades resolution of inputs, and of the whole subsequent comparison and training process. This degradation is exponential with the number of layers, thus requiring ridiculous number of backprop cycles leads to fit inputs into meaningful representations.
+
+Most modern ANNs combine such vertical training with the embedding of some lateral correlations among their nodes. CNN is basically edge-detection at the bottom: cross-comp within kernels, but with trained weights. [Graph NNs](https://towardsdatascience.com/transformers-are-graph-neural-networks-bca9f75412aa) embed lateral edges, and currently popular [transformers](https://www.quantamagazine.org/researchers-glimpse-how-ai-gets-so-good-at-language-processing-20220414/)  are a variation of GNN. Similar positional encoding was explored in Hinton's [Capsule Networks](https://medium.com/ai%C2%B3-theory-practice-business/understanding-hintons-capsule-networks-part-i-intuition-b4b559d1159b). But these embeddings are still learned through destructive backprop, while I propose comparison-first connectivity-based clustering, which preserves input resolution until evaluation by resulting match.
+
+This algorithm is designed to implement pattern discovery through hierarchically alternating cross-comparison and connectivity clustering of the inputs. The clusters are defined by comparison-derived parameters, including match, AKA similarity. Similarity is a measure of compression, or what’s common / general among compared inputs. Thus, clusters (patterns) are generalized representations of inputs, and they become higher-level inputs.
+The result is a pipelined hierarchy, with increasing quantization of inputs, comparison power, and distance between comparands. Positional resolution (macro) lags value resolution (micro) by one quantization order.
+
+Initial levels:
+
+| Input                          | Comparison | Positional Resolution                        | Output                         | Conventionally known as            |
+|-----------------------------------------|------------|----------------------------------------------|-----------------------------------------|------------------------------------|
+| _unary_ intensity                         | AND        | _none,_ all in same coords                            | pixels of intensity                          | digitization                       |
+| _integer_ pixels                          | SUB        | _binary:_ direction of comparison                            | blobs of gradient                       | edge detection, image segmentation |
+| _float:_ averaged params of blobs                     | DIV: compare mean params        | _integer:_ distance between blob centers                          | graphs of blobs              | connectivity-based clustering      |
+| graphs of directly matching nodes, with _complex_ parameters | LOG: compare mean params to average-node params        | _float:_ distance to mean coordinates of matching nodes | clusters of centroid-matching nodes | centroid-based clustering, Hebbian learning   |
 
 
-### Outline of my approach
+And so on, higher levels should be added recursively. 
+
+Such process is very complex and deeply structured, no way it could've evolved naturally. Since the code is recursive, testing before it is complete is almost useless. Which is probably why no one seems to work on such methods. But once the design is done, there is no need for interminable glacial and opaque training, my feedback only adjusts hyperparameters.
+
+In the next section, I define atomic comparison and resulting patterns, then describe a hierarchically recursive algorithm of search for incrementally complex patterns. The following section compares my scheme to ANN and BNN. This is an open project, we need help with design and implementation: [WIKI](https://github.com/boris-kz/CogAlg/wiki). I pay for contributions or monthly if there is a track record, see [CONTRIBUTING](https://github.com/boris-kz/CogAlg/blob/master/CONTRIBUTING.md). 
 
 
-Proposed algorithm is a comparison-first alternative to deep learning. It's an [instance-based learning](https://en.wikipedia.org/wiki/Instance-based_learning), neither statistical nor neuromorphic. There is no fitting, just cross-comparison and clustering of input patterns with incremental range and derivation. This cross-comp and clustering is done at each level of an input pipeline, outputting higher-composition patterns of patterns, etc., to the next level. It forms incrementally higher levels of search, which then feed back deviations of past cross-match as hyper-parameters to filter future inputs.
+### Outline
 
-Pattern is a set of matching inputs, where match is compressibility per input, see “Comparison” section below. Sometimes pattern is defined as some reoccurring item or group of items, in my terms those are elements of a pattern. If the inputs co-vary: they don't match but their derivatives do, then the elements are those derivatives. This is covered by my definition: input may consist of any set of variables. But lower-derivation and shorter-range cross-comparison must be done first, starting with primary patterns of atomic inputs.
+
+Proposed algorithm is a comparison-first alternative to deep learning. It's an [instance-based learning](https://en.wikipedia.org/wiki/Instance-based_learning): connectivity clustering, vs. centroid clustering in statistical and neuromorphic learning. It cross-compares input patterns with incremental range and derivation, at each level in input pipeline. Clustering by resulting match forms incrementally higher-composition patterns of patterns, etc., which become higher-level inputs. Higher levels also feed back deviations of past cross-match as hyper-parameters to filter future inputs.
+
+Pattern is a cluster of matching inputs, where match is compression achieved by encoding the input as derivatives, see “Comparison” section below. Some define pattern as a recurring item or group of items, but to me these are pattern elements. If the items co-vary: they don't match but their derivatives do, then resulting pattern elements are the derivatives. This is covered by my definition: input may be any set of variables. But lower-derivation and shorter-range cross-comparison must be done first, starting with atomic single-variable inputs.
 
 These first-level comparands is sensory input at the limit of resolution: adjacent pixels of video or equivalents in other modalities. All primary modalities form a dense array of such inputs in Cartesian dimensions, and symbolic data is merely a product of their encoding by some cognitive process. To discover meaningful patterns, these symbols must be decoded before cross-comparison. The difficulty of decoding is exponential with the level of encoding, thus a start with raw sensory input is by far the easiest to implement.
 
@@ -29,7 +50,7 @@ These direct similarity measures work if input intensity represents some stable 
 
 #### Patterns, more in part 2:
 
-Cross-comparison among patterns forms match and miss per parameter, as well as dimensions and distances: external match and miss (these are separate parameters: total value = precision of what * precision of where). Comparison is limited by max. distance between patterns. Overall hierarchy has incremental dimensionality: search levels ( param levels ( pattern levels)).., and pattern comparison is selectively incremental per such level. This is hard to explain in NL, please see the code, starting with [line_patterns](https://github.com/boris-kz/CogAlg/blob/master/line_1D_alg/line_patterns.py) and [line_PPs](https://github.com/boris-kz/CogAlg/blob/master/line_1D_alg/line_PPs.py).
+Cross-comparison among patterns forms match and miss per parameter, as well as dimensions and distances: external match and miss (these are separate parameters: total value = precision of what * precision of where). Comparison is limited by max. distance between patterns. Overall hierarchy has incremental dimensionality: search levels ( param levels ( pattern levels)).., and pattern comparison is selectively incremental per such level. This is hard to explain in NL, please see the code, starting with [line_Ps](https://github.com/boris-kz/CogAlg/blob/master/line_1D_alg/line_P.py) and [line_PPs](https://github.com/boris-kz/CogAlg/blob/master/line_1D_alg/line_PPs.py).
   
 Resulting matches and misses are summed into lateral match and miss per pattern. Proximate input patterns with above-average match to their nearest neighbors are clustered into higher-level patterns. This adds two pattern levels: of composition and derivation, per level of search. Conditional cross-comp over incremental range and derivation, among the same inputs, may also add sub-levels in selected newly formed patterns. On a pixel level, incremental range is using larger kernels, and incremental derivation starts with using Laplacian. 
 
@@ -49,26 +70,23 @@ Final algorithm will consist of first-level operations + recursive increment in 
  
 Please see [system diagram](https://github.com/boris-kz/CogAlg/blob/master/frame_2D_alg/Illustrations/Whole-system%20hierarchy.png). 
 
-* Some notes:
-- I use singular in “cognitive algorithm” because it is designed to maximize single criterion: predictive value. Which must be computed by cross-comp and clustering cycle on all levels, although the details may vary. 
-- Core design should be done theoretically: generality requires large upfront investment in process complexity, which makes it a huge overkill for any specific task. This is probably why such schemes are not explored.
+Some notes:
+- There should be a unique set of operations added per level, hence a singular in “cognitive algorithm”.
+- Core design must be done theoretically: generality requires large upfront investment in process complexity, which makes it a huge overkill for any specific task. That’s one reason why such schemes are not explored.
 - Many readers note disconnect between abstractions in this outline, and the amount of detail in current code. That’s because we are in space-time continuum: search must follow proximity in each dimension, which requires specific processing. It’s not specific to vision, the process is mostly the same for all raw modalities. 
-- Another complaint is that I don't use mathematical notation, but it simply doesn't have the flexibility to express deeply conditional process, with recursively increasing complexity. 
-- Most people who aspire to work on [AGI](https://en.wikipedia.org/wiki/Artificial_general_intelligence). think in terms behaviour and robotics. I think this is far too coarse to make progress, the most significant mechanisms are on the level of perception. Feedforward (perception) must drive feedback (action), not the other way around.
+- Another complaint is that I don't use mathematical notation, but it simply doesn't have the flexibility to express deeply conditional process, with recursively increasing complexity.
+- Most people who aspire to work on AGI think in terms behavior and robotics. I think this is far too coarse to make progress, the most significant mechanisms are on the level of perception. Feedforward (perception) must drive feedback (action), not the other way around.
 - Other distractions are supervision and reinforcement. These are optional task-specific add-ons, core cognitive process is unsupervised pattern discovery, and main problem here is scaling in complexity.
-- As distinct from KNN, I treat internal and external parameters (inputs and dimensions these inputs are ordered in) very differently. This also applies to filters: projected average values of these parameters. 
-- Don’t even start me on chatbots. 
+- Don’t even start me on chatbots.  
 
 
 
 ### Comparison to Artificial and Biological Neural Networks
 
 
-All unsupervised learning is some form of pattern discovery, by input comparison and clustering. I do both laterally: among inputs within a level, while in statistical learning they are vertical: between layers of weighted summation. Weight adjustment by error from final comparison is a soft clustering: modulated inclusion or exclusion of subsequent inputs into next output. So, vertical weighted summation is primary to comparison, which is a conceptual flaw: local lateral cross-correlation should precede (actually replace) more distant vertical one.
+All unsupervised learning is some form of pattern discovery, where patterns are some kind of similarity clusters. There are two fundamentally different ways to cluster inputs: centroid-based and connectivity-based. All [statistical learning](https://en.wikipedia.org/wiki/Statistical_learning_theory), including Neural Nets, is best understood as [centroid-based clustering](https://en.wikipedia.org/wiki/Cluster_analysis#Centroid-based_clustering). Centroid doesn’t have to be a single value, fitted line in linear regression can be considered a one-dimensional centroid. 
 
-Neural Nets is a version of [statistical learning](https://en.wikipedia.org/wiki/Statistical_learning_theory), I think it is best understood as [centroid clustering](https://en.wikipedia.org/wiki/Cluster_analysis#Centroid-based_clustering) (centroid doesn’t have to be a single value, fitted line in linear regression can be considered a one-dimensional centroid). Basic ANN is a [multi-layer perceptron](https://towardsdatascience.com/what-the-hell-is-perceptron-626217814f53): each node weighs the inputs at synapses, then sums and thresholds them into output. This normalized sum of inputs is their centroid. Output of the top layer is compared to some template, forming an error. [Stochastic Gradient Descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent) then backpropagates the error, training initially random weights into transformations (reversed vertical derivatives) that reduce future error.
-
-That usually means training [CNN](https://en.wikipedia.org/wiki/Convolutional_neural_network) to perform some sort of edge-detection or cross-correlation (same as my cross-comparison but the former terms lose meaning on higher levels of search). But CNN operations are initially random, while my process is designed for cross-comp from the start. This is why it can be refined by my feedback, updating the filters, which is far more subtle and selective than weight training by backprop. 
+That usually means training [CNN](https://en.wikipedia.org/wiki/Convolutional_neural_network) or Transformer to perform some sort of edge-detection or cross-correlation (same as my cross-comparison but the former terms lose meaning on higher levels of search). But CNN operations are initially random, while my process is designed for cross-comp from the start. This is why it can be refined by my feedback, updating the filters, which is far more subtle and selective than weight training by backprop. 
 So, I have several problems with basic process in ANN:
 
 - Vertical learning (via feedback of error) takes tens of thousands of cycles to form accurate representations. That's because summation per layer degrades positional input resolution. With each added layer, the output that ultimately drives learning contains exponentially smaller fraction of original information. My cross-comp and clustering is far more complex per level, but the output contains all information of the input. Lossy selection is only done on the next level, after evaluation per pattern (vs. before evaluation in statistical methods). 
@@ -90,30 +108,6 @@ Other biological constraints are very slow neurons, and the imperative of fast r
 I see no way evolution could produce proposed algorithm, it is extremely limited in complexity that can be added before it is pruned by natural selection. And that selection is for reproduction, while intelligence is distantly instrumental. The brain evolved to guide the body, with neurons originating as instinctive stimulus-to-response converters. Hence, both SGD and Hebbian learning is fitting, driven by feedback of action-triggering weighted input sum. Pattern discovery is their instrumental upshot, not an original purpose.
 
 Uri Hasson, Samuel Nastase, Ariel Goldstein reach a similar conclusion in “[Direct fit to nature: an evolutionary perspective on biological and artificial neural networks](https://www.cell.com/neuron/fulltext/S0896-6273(19)31044-X)”: “We argue that neural computation is grounded in brute-force direct fitting, which relies on over-parameterized optimization algorithms to increase predictive power (generalization) without explicitly modeling the underlying generative structure of the world. Although ANNs are indeed highly simplified models of BNNs, they belong to the same family of over-parameterized, direct-fit models, producing solutions that are mistakenly interpreted in terms of elegant design principles but in fact reflect the interdigitation of ‘‘mindless’’ optimization processes and the structure of the world.”
-
-
-### Comparison to Capsule Networks
-
-
-The nearest experimentally successful method is recently introduced “[capsules](https://arxiv.org/pdf/1710.09829.pdf)”. Some similarities to CogAlg:
-- capsules also output multivariate vectors, “encapsulating” several parameters, similar to my patterns,
-- these parameters also include pose: coordinates and dimensions, compared to compute transformations,
-- these transformations are compared to find affine transformations or equivariance: my match of misses,
-- capsules also send direct feedback to lower layer: dynamic routing, vs. trans-hidden-layer backprop in ANN.
-
-My main problems with CapsNet and alternative treatment:
- 
-- Object is defined as a recurring configuration of different parts. But such recurrence can’t be assumed, it should be derived by cross-comparing relative position among parts of matching objects. This can only be done after their positions are cross-compared, which is after their objects are cross-compared: two levels above the level that forms initial objects. So, objects formed by positional equivariance would be secondary, though they may displace initial segmentation objects as a primary representation. Stacked Capsule Autoencoders also have exclusive segmentation on the first layer, but proximity doesn’t matter on their higher layers.
-
-- Routing by agreement is basically recursive centroid clustering, by match of input vector to the output vector. The output (centroid) represents inputs at all locations, so its comparison to inputs is effectively mixed-distance. Thus, clustering in CapsNet is fuzzy and discontinuous, forming redundant representations. Routing by agreement reduces that redundancy, but not consistently so, it doesn’t specifically account for it. 
-My default clustering is exclusive segmentation: each element (child) belongs to only one cluster (parent). Fuzzy clustering is selective to inputs valued above the cost of adjusting for overlap in representation, which increases with the range of cross-comparison. This conditional range increase is done on all levels of composition.
-
-- Instantiation parameters are application-specific, CapsNet has no general mechanism to derive them. My general mechanism is cross-comparison of input capsule parameters, which forms higher-order parameters. First level forms pixel-level gradient, similar to edge detection in CNN. But then it forms proximity-constrained clusters, defined by gradient and parameterized by summed pixel intensity, dy, dx, gradient, angle. This cross-comparison followed by clustering is done on all levels, with incremental number of parameters per input.
-
-- Number of layers is fixed, while I think it should be incremental with experience. My hierarchy is a dynamic pipeline: patterns are displaced from a level by criterion sign change and sent to existing or new higher level. So, both hierarchy of patterns per system and sub-hierarchy of derivatives per pattern expand with experience. The derivatives are summed within a pattern, then evaluated for extending intra-pattern search and feedback.
-
-- Output vector of higher capsules combines parameters of all lower layers into Euclidean distance. That is my default too, but they should also be kept separate, for potential cross-comp among layer-wide representations.
-Overall, CapsNet is a variation of ANN, with input summation first and dynamic routing second. So, it’s a type of Hebbian learning, with most of the problems that I listed in the previous section.
 
 
 
