@@ -63,7 +63,7 @@ ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_in
 ave_rdm = .5  # obsolete: average dm / m, to project bi_m = m * 1.5
 ave_splice = 50  # to merge a kernel of 3 adjacent Ps
 init_y = 500  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 502  # ending row, set 999999999 for arbitrary image
+halt_y = 501  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -95,7 +95,7 @@ def line_Ps_root(pixel_):  # Ps: patterns, converts frame_of_pixels to frame_of_
         with open("layer0_log_py.csv", "a") as csvFile:
             write = csv.writer(csvFile, delimiter=",")
             for id, val in enumerate(dert_):
-                write.writerow([id, val.i, val.p, val.d, val.m, val.mrdn])
+                write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
 
     return [dert_]  # input to 2nd level
 
@@ -109,7 +109,7 @@ if logging:
     import csv
     with open("layer0_log_py.csv", "w") as csvFile:
         write = csv.writer(csvFile, delimiter=",")
-        parameter_names = [" ", "i=", "p=", "d=", "m=", "mrdn="]
+        parameter_names = ["i", "p", "d", "m", "mrdn"]
         write.writerow(parameter_names)
 
 start_time = time()

@@ -1,4 +1,4 @@
-#=
+"""
   line_Ps is a principal version of 1st-level 1D algorithm
   Operations:
   -
@@ -16,11 +16,21 @@
   -
   Both extended cross-comp forks are recursive: resulting sub-patterns are evaluated for deeper cross-comp, same as top patterns.
   These forks here are exclusive per P to avoid redundancy, but they do overlap in line_patterns_olp.
-=#
+"""
 
-using Images, ImageView, Plots
+using Images, ImageView, CSV
 
-Cdert = (i = [], p = [])
+# instead of the class in Python version in Julia values are stared in the struct
+mutable struct Cdert_
+    i::Int16
+    p::Int16
+    d::Int16
+    m::Int16
+    mrdn::Bool
+end
+
+dert_ = Cdert_[] # line-wide i_, p_, d_, m_, mrdn_
+
 
 verbose = false
 # pattern filters or hyper-parameters: eventually from higher-level feedback, initialized here as constants:
@@ -31,12 +41,11 @@ ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
 ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_inc = 1 + 1 / ave_nP # 1.2
 ave_rdm = 0.5  # obsolete: average dm / m, to project bi_m = m * 1.5
 ave_splice = 50  # to merge a kernel of 3 adjacent Ps
-init_y = 500  # starting row, set 0 for the whole frame, mostly not needed
+init_y = 501  # starting row, set 0 for the whole frame, mostly not needed 
 halt_y = 501  # ending row, set 999999999 for arbitrary image.
-#! this value will be one more (+1) in the python version because of the numbering specifics
-
-#=
- Conventions:
+#! these values will be one more (+1) in the Julia version because of the numbering specifics
+"""
+    Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
     postfix '_' denotes array name, vs. same-name elements
     prefix '_'  denotes prior of two same-name variables
@@ -44,23 +53,20 @@ halt_y = 501  # ending row, set 999999999 for arbitrary image.
     1-3 letter names are normally scalars, except for P and similar classes, 
     capitalized variables are normally summed small-case variables,
     longer names are normally classes
-=#
+"""
 
 
 function line_Ps_root(pixel_)  # Ps: patterns, converts frame_of_pixels to frame_of_patterns, each pattern may be nested
-    dert_ = []  # line-wide i_, p_, d_, m_, mrdn_
-    _i = pixel_[1]  #! differs from the python version
+    local _i = pixel_[1]  #! differs from the python version
     # cross_comparison:
     for i in pixel_[2:end]  # pixel i is compared to prior pixel _i in a row:
         d = i - _i  # accum in rng
         p = i + _i  # accum in rng
         m = ave - abs(d)  # for consistency with deriv_comp output, else redundant
         mrdn = m < 0  # 1 if abs(d) is stronger than m, redundant here
-        # dert_.append( Cdert( i=i, p=p, d=d, m=m, mrdn=mrdn) )
+        push!(dert_, Cdert_(i, p, d, m, mrdn))  # save data in the struct
         _i = i
 
-        return i, d, p, m, mrdn
-        # println(i)
     end
 end
 
@@ -68,11 +74,10 @@ end
 render = 0
 fline_PPs = 0
 frecursive = 0
-logging = 0  # logging of local functions variables
-
-# if logging:
+logging = 1  # logging of local functions variables
 
 image_path = "./line_1D_alg/raccoon.jpg";
+# image_path = "/home/alex/Python/CogAlg/line_1D_alg/raccoon.jpg";
 image = nothing
 
 # check if image exist
@@ -90,10 +95,13 @@ gray_image_int = convert.(Int16, trunc.(img_channel_view .* 255))  # finally get
 # Main
 Y, X = size(gray_image) # Y: frame height, X: frame width
 frame = []
-y = init_y  # y is index of new row pixel_, we only need one row, use init_y=0, halt_y=Y for full frame
-println(y)  # as far as we procecess currently only one image row in the python version of line_Ps
 
-i_, d_, p_, m_, mrdn_ = line_Ps_root(gray_image_int[y, :])  # P_T = Pm_, Pd_
+# y is index of new row pixel_, we only need one row, use init_y=1, halt_y=Y for full frame
+for y = init_y:min(halt_y, Y)
+    line_Ps_root(gray_image_int[y, :])  # line = [Pm_, Pd_]
+end
 
-
+if logging == 1
+    CSV.write("./line_1D_alg/layer0_log_jl.csv", dert_)
+end
 
