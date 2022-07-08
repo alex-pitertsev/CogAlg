@@ -392,42 +392,6 @@ def comp_P_rng(iP__, rng):  # rng+ sub_recursion in PP.P__, adding two link_laye
     return iP__  # return bottom-up P__
 
 
-# old draft
-def splice_dir_blob_(dir_blobs):
-
-    for i, _dir_blob in enumerate(dir_blobs):
-        for fPd in 0, 1:
-            PP_ = _dir_blob.levels[0][fPd]
-
-            if fPd: PP_val = sum([PP.mP for PP in PP_])
-            else:   PP_val = sum([PP.dP for PP in PP_])
-
-            if PP_val - ave_splice > 0:  # high mPP pr dPP
-
-                _top_P_ = _dir_blob.P__[0]
-                _bottom_P_ = _dir_blob.P__[-1]
-
-                for j, dir_blob in enumerate(dir_blobs):
-                    if _dir_blob is not dir_blob:
-
-                        top_P_ = dir_blob.P__[0]
-                        bottom_P_ = dir_blob.P__[-1]
-                        # test y adjacency
-                        if (_top_P_[0].y-1 == bottom_P_[0].y) or (top_P_[0].y-1 == _bottom_P_[0].y):
-                            # tet x overlap
-                             _x0 = min([_P.x0 for _P_ in _dir_blob.P__ for _P in _P_])
-                             _xn = min([_P.x0+_P.L for _P_ in _dir_blob.P__ for _P in _P_])
-                             x0 = min([P.x0 for P_ in dir_blob.P__ for P in P_])
-                             xn = min([P.x0+_P.L for P_ in dir_blob.P__ for P in P_])
-                             if (x0 - 1 < _xn and xn + 1 > _x0) or  (_x0 - 1 < xn and _xn + 1 > x0) :
-                                 splice_2dir_blobs(_dir_blob, dir_blob)  # splice dir_blob into _dir_blob
-                                 dir_blobs[j] = _dir_blob
-
-def splice_2dir_blobs(_blob, blob):
-    # merge blob into _blob here
-    pass
-
-
 # replace with inline derP initialization?
 def comp_derP(_derP, derP, instance=CderP, finP=1, foutderP=1):
     # instance, finP, foutderP are not needed anymore?
@@ -632,3 +596,113 @@ def draw_PPs(dir_blob, PP_, fspliced):
         cv2.imwrite(os.getcwd() + "/images/comp_slice/img_" + str(dir_blob.id) + "_PP.png", img)
     else:
         cv2.imwrite(os.getcwd() + "/images/comp_slice/img_" + str(dir_blob.id) + "_PP_spliced.png", img)
+
+
+def func_layers_chee(_layers, layers, out_layers, func):  # max_nesting = len layers, ntuples = sum(ntuples in lower layers) * 2: 1, 2, 6, 18...
+
+    if _layers and layers:
+        if isinstance(_layers[0], list):  # 1st layer is two vertuples, decoded in func; may need recursive unpack if from der+
+            sub_out_layers = []
+            for _sub_layers, sub_layers in zip(_layers, layers):
+                func_layers(_sub_layers, sub_layers, sub_out_layers, func)
+            out_layers += [sub_out_layers]
+        else:
+            func(_layers, layers)  # 1st layer is latuple, decoded in func
+
+
+def func_layers(_layers, layers, out_layers, func):
+
+    # recursive unpack of nested ptuple pairs, if any from der+, in the bottom layer or sublayer:
+    out_layers += [func_pairs(_layers[0], layers[0], out_pairs=[], func_ptuple=func)]
+
+    # recursive unpack of deeper layers, from agg+ in 3rd and higher layers, down to nested tuple pairs
+    for _layer, layer in zip(_layers[1:], layers[1:]):
+        out_layers += [func_layers(_layer, layer, out_layers, func)]
+        # layer = deeper sub_layers
+    '''
+    1st and 2nd layers are single sublayers, the 2nd adds tuple pair nesting. Both are unpacked by func_pairs, not func_layers.  
+    Multiple sublayers start on the 3rd layer, because it's derived from comparison between two (not one) lower layers. 
+    4th layer is derived from comparison between 3 lower layers, where the 3rd layer is already nested, etc.
+    '''
+    return out_layers # possibly nested param layers
+
+
+def func_pairs(_pairs, pairs, out_pairs, func_ptuple):  # recursively unpack m,d tuple pairs from der+
+
+    if isinstance(_pairs[0], list):  # pairs is a pair, possibly nested
+        out_pairs += func_pairs(_pairs[0], pairs[0], out_pairs, func_ptuple)
+    else:
+        out_pairs += func_ptuple(_pairs[0], pairs[0])  # pairs is actually a ptuple, 1st element is a param
+
+    return out_pairs  # possibly nested m,d ptuple pairs
+
+
+def sum_layers(summed_params, params):
+
+    sum_pairs(summed_params[0], params[0])  # recursive unpack of nested ptuple pairs, if any from der+, in the bottom layer or sublayer
+
+    for Layer, layer in zip(summed_params[1:], params[1:]):  # recursive unpack of deeper layers, from agg+
+        sum_layers(Layer, layer)  # layer = deeper sub_layers
+
+
+def comp_P(_P, P, instance=CderP, finP=1, foutderP=1):  # forms vertical derivatives of params per P in _P.uplink, conditional ders from norm and DIV comp
+
+    if finP:  # input is CderP
+        _P_params = _P.params; P_params = P.params
+    else:  # input is param layer
+        _P_params = _P; P_params = P
+
+    # compared P params:
+    _x, _L, _M, _Ma, _I, _Dx, _Dy, _sin_da0, _cos_da0, _sin_da1, _cos_da1 = _P_params
+    x, L, M, Ma, I, Dx, Dy, sin_da0, cos_da0, sin_da1, cos_da1 = P_params
+
+    dx = _x - x;  mx = ave_dx - abs(dx)  # mean x shift, if dx: rx = dx / ((L+_L)/2)? no overlap, offset = abs(x0 -_x0) + abs(xn -_xn)?
+    dI = _I - I;  mI = ave_I - abs(dI)
+    dM = _M - M;  mM = min(_M, M)
+    dMa = _Ma - Ma;  mMa = min(_Ma, Ma)  # dG, dM are directional, re-direct by dx?
+    dL = _L - L * np.hypot(dx, 1); mL = min(_L, L)  # if abs(dx) > ave: adjust L as local long axis, no change in G,M
+    # G, Ga:
+    G = np.hypot(Dy, Dx); _G = np.hypot(_Dy, _Dx)  # compared as scalars
+    dG = _G - G;  mG = min(_G, G)
+    Ga = (cos_da0 + 1) + (cos_da1 + 1); _Ga = (_cos_da0 + 1) + (_cos_da1 + 1)  # gradient of angle, +1 for all positives?
+    # or Ga = np.hypot( np.arctan2(*Day), np.arctan2(*Dax)?
+    dGa = _Ga - Ga;  mGa = min(_Ga, Ga)
+
+    # comp angle:
+    _sin = _Dy / (1 if _G==0 else _G); _cos = _Dx / (1 if _G==0 else _G)
+    sin  = Dy / (1 if G==0 else G); cos = Dx / (1 if G==0 else G)
+    sin_da = (cos * _sin) - (sin * _cos)  # sin(α - β) = sin α cos β - cos α sin β
+    cos_da = (cos * _cos) + (sin * _sin)  # cos(α - β) = cos α cos β + sin α sin β
+    dangle = np.arctan2(sin_da, cos_da)  # vertical difference between angles
+    mangle = ave_dangle - abs(dangle)  # indirect match of angles, not redundant as summed
+
+    # comp angle of angle: forms daa, not gaa?
+    sin_dda0 = (cos_da0 * _sin_da0) - (sin_da0 * _cos_da0)
+    cos_dda0 = (cos_da0 * _cos_da0) + (sin_da0 * _sin_da0)
+    sin_dda1 = (cos_da1 * _sin_da1) - (sin_da1 * _cos_da1)
+    cos_dda1 = (cos_da1 * _cos_da1) + (sin_da1 * _sin_da1)
+
+    daangle = (sin_dda0, cos_dda0, sin_dda1, cos_dda1)
+    # day = [-sin_dda0 - sin_dda1, cos_dda0 + cos_dda1]
+    # dax = [-sin_dda0 + sin_dda1, cos_dda0 + cos_dda1]
+    gay = np.arctan2( (-sin_dda0 - sin_dda1), (cos_dda0 + cos_dda1))  # gradient of angle in y?
+    gax = np.arctan2( (-sin_dda0 + sin_dda1), (cos_dda0 + cos_dda1))  # gradient of angle in x?
+    daangle = np.arctan2( gay, gax)  # probably wrong
+    maangle = ave_daangle - abs(daangle)  # match between aangles, not redundant as summed
+
+    dP = abs(dx)-ave_dx + abs(dI)-ave_I + abs(G)-ave_G + abs(Ga)-ave_Ga + abs(dM)-ave_M + abs(dMa)-ave_Ma + abs(dL)-ave_L
+    # sum to evaluate for der+, abs diffs are distinct from directly defined matches:
+    mP = mx + mI + mG + mGa + mM + mMa + mL + mangle + maangle
+
+    params = [[mx, mL, mM, mMa, mI, mG, mGa, mangle, maangle, mP],
+              [dx, dL, dM, dMa, dI, dG, dGa, dangle, daangle, dP]]
+
+    if foutderP:
+        # or summable params only, compute Gs at termination?
+        x0 = min(_P.x0, P.x0)
+        xn = max(_P.x0+_P.L, P.x0+P.L)
+        L = xn-x0
+        return instance(x0=x0, L=L, y=_P.y, params=params, P=P, _P=_P)
+
+    else:
+        return params
