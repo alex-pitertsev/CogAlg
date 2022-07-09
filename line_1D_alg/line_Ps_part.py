@@ -62,8 +62,8 @@ ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
 ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_inc = 1 + 1 / ave_nP # 1.2
 ave_rdm = .5  # obsolete: average dm / m, to project bi_m = m * 1.5
 ave_splice = 50  # to merge a kernel of 3 adjacent Ps
-init_y = 500  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 501  # ending row, set 999999999 for arbitrary image
+init_y = 0  # starting row, set 0 for the whole frame, mostly not needed
+halt_y = 999  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 1  # logging of local functions variables
+    logging = 0  # logging of local functions variables
 
     if logging:
         import csv

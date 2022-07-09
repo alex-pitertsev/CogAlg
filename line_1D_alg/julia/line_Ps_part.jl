@@ -28,7 +28,6 @@ mutable struct Cdert_
     m::Int32
     mrdn::Bool
 end
-dert_ = Cdert_[] # line-wide i_, p_, d_, m_, mrdn_
 
 mutable struct CP
     L::Int32
@@ -45,17 +44,19 @@ mutable struct CP
     # derDertt_ = list  # for subDertt_s compared in line_PPs
 end
 
-verbose = false
+# verbose = false
 # pattern filters or hyper-parameters: eventually from higher-level feedback, initialized here as constants:
 ave = 15  # |difference| between pixels that coincides with average value of Pm
-ave_min = 2  # for m defined as min |d|: smaller?
-ave_M = 20  # min M for initial incremental-range comparison(t_), higher cost than der_comp?
-ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
-ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_inc = 1 + 1 / ave_nP # 1.2
-ave_rdm = 0.5  # obsolete: average dm / m, to project bi_m = m * 1.5
-ave_splice = 50  # to merge a kernel of 3 adjacent Ps
-init_y = 501  # starting row, set 0 for the whole frame, mostly not needed 
-halt_y = 501  # ending row, set 999999999 for arbitrary image.
+# ave_min = 2  # for m defined as min |d|: smaller?
+# ave_M = 20  # min M for initial incremental-range comparison(t_), higher cost than der_comp?
+# ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
+# ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_inc = 1 + 1 / ave_nP # 1.2
+# ave_rdm = 0.5  # obsolete: average dm / m, to project bi_m = m * 1.5
+# ave_splice = 50  # to merge a kernel of 3 adjacent Ps
+init_y = 1  # starting row, set 1 for the whole frame, mostly not needed 
+# init_y = 501  # starting row, set 1 for the whole frame, mostly not needed 
+halt_y = 999  # ending row, set 999999999 for arbitrary image.
+# halt_y = 501  # ending row, set 999999999 for arbitrary image.
 #! these values will be one more (+1) in the Julia version because of the numbering specifics
 """
     Conventions:
@@ -106,7 +107,9 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
 end
 
 function line_Ps_root(pixel_)  # Ps: patterns, converts frame_of_pixels to frame_of_patterns, each pattern may be nested
-    local _i = pixel_[1]  #! differs from the python version # cross_comparison:
+    dert_ = Cdert_[] # line-wide i_, p_, d_, m_, mrdn_
+
+    _i = pixel_[1]  #! differs from the python version # cross_comparison:
     for i in pixel_[2:end]  # pixel i is compared to prior pixel _i in a row:
         d = i - _i  # accum in rng
         p = i + _i  # accum in rng
@@ -131,8 +134,7 @@ end
 render = 0
 fline_PPs = 0
 frecursive = 0
-logging = 1  # logging of local functions variables
-# logging = 0  # logging of local functions variables
+logging = 0  # logging of local functions variables
 
 # image_path = "./line_1D_alg/raccoon.jpg";
 image_path = "/home/alex/Python/CogAlg/line_1D_alg/raccoon.jpg";
