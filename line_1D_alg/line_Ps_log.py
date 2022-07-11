@@ -60,7 +60,7 @@ ave_M = 20  # min M for initial incremental-range comparison(t_), higher cost th
 ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
     
 init_y = 501  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 503  # ending row, set 999999999 for arbitrary image
+halt_y = 502  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -86,7 +86,7 @@ def line_Ps_root(pixel_):  # Ps: patterns, converts frame_of_pixels to frame_of_
         _i = i
 
     if logging == 1:
-        with open("level1_log_py.csv", "a") as csvFile_1:
+        with open("layer1_log_py.csv", "a") as csvFile_1:
             write = csv.writer(csvFile_1, delimiter=",")
             for id, val in enumerate(dert_):
                 write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
@@ -127,14 +127,14 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     
     if logging == 2:
         if fPd == False:
-            logfile_name = "level2_Pm_log_py.csv"
+            logfile_name = "layer2_Pm_log_py.csv"
         else: 
-            logfile_name = "level2_Pd_log_py.csv"
+            logfile_name = "layer2_Pd_log_py.csv"
 
         with open(logfile_name, "a") as csvFile_2:
             write = csv.writer(csvFile_2, delimiter=",")
             for id, val in enumerate(P_):
-                write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.sublayers])
+                write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.subset, val.sublayers])
 
     return P_  # used only if not rootP, else packed in rootP.sublayers
 
@@ -217,18 +217,18 @@ if __name__ == "__main__":
     logging = 2  # logging of level 1 or level 2 data structuring
 
     if logging == 1:
-        with open("level1_log_py.csv", "w") as csvFile_1:
+        with open("layer1_log_py.csv", "w") as csvFile_1:
             write = csv.writer(csvFile_1, delimiter=",")
             parameter_names = ["i", "p", "d", "m", "mrdn"]
             write.writerow(parameter_names)
 
     if logging == 2:
-        parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_", "sublayers"]
-        with open("level2_Pm_log_py.csv", "w") as csvFile_2:
+        parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_","subset", "sublayers"]
+        with open("layer2_Pm_log_py.csv", "w") as csvFile_2:
             write = csv.writer(csvFile_2, delimiter=",")
             write.writerow(parameter_names)
 
-        with open("level2_Pd_log_py.csv", "w") as csvFile_3:
+        with open("layer2_Pd_log_py.csv", "w") as csvFile_3:
             write = csv.writer(csvFile_3, delimiter=",")
             write.writerow(parameter_names)
 
