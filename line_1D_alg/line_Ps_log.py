@@ -27,10 +27,11 @@ sys.path.insert(0, abspath(join(dirname("CogAlg"), '..')))
 import cv2
 # import argparse
 import pickle
+import csv
 from time import time
 from matplotlib import pyplot as plt
 from itertools import zip_longest
-from frame_2D_alg.class_cluster import ClusterStructure, NoneType, comp_param
+from frame_2D_alg.class_cluster import ClusterStructure, NoneType
 
 class Cdert(ClusterStructure):
     i = int  # input for range_comp only
@@ -50,8 +51,6 @@ class CP(ClusterStructure):
     subset = list  # 1st sublayer' rdn, rng, xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
     # for layer-parallel access and comp, ~ frequency domain, composition: 1st: dert_, 2nd: sub_P_[ dert_], 3rd: sublayers[ sub_P_[ dert_]]:
     sublayers = list  # multiple layers of sub_P_s from d segmentation or extended comp, nested to depth = sub_[n]
-    subDertt_ = list  # m,d' [L,I,D,M] per sublayer, conditionally summed in line_PPs
-    derDertt_ = list  # for subDertt_s compared in line_PPs
 
 verbose = False
 # pattern filters or hyper-parameters: eventually from higher-level feedback, initialized here as constants:
@@ -59,11 +58,9 @@ ave = 15  # |difference| between pixels that coincides with average value of Pm
 ave_min = 2  # for m defined as min |d|: smaller?
 ave_M = 20  # min M for initial incremental-range comparison(t_), higher cost than der_comp?
 ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
-ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_inc = 1 + 1 / ave_nP # 1.2
-ave_rdm = .5  # obsolete: average dm / m, to project bi_m = m * 1.5
-ave_splice = 50  # to merge a kernel of 3 adjacent Ps
-init_y = 0  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 999  # ending row, set 999999999 for arbitrary image
+    
+init_y = 501  # starting row, set 0 for the whole frame, mostly not needed
+halt_y = 503  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -88,9 +85,9 @@ def line_Ps_root(pixel_):  # Ps: patterns, converts frame_of_pixels to frame_of_
         dert_.append( Cdert( i=i, p=p, d=d, m=m, mrdn=mrdn) )
         _i = i
 
-    if logging:
-        with open("layer0_log_py.csv", "a") as csvFile_0:
-            write = csv.writer(csvFile_0, delimiter=",")
+    if logging == 1:
+        with open("level1_log_py.csv", "a") as csvFile_1:
+            write = csv.writer(csvFile_1, delimiter=",")
             for id, val in enumerate(dert_):
                 write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
 
@@ -100,7 +97,7 @@ def line_Ps_root(pixel_):  # Ps: patterns, converts frame_of_pixels to frame_of_
 
     return [Pm_, Pd_]  # input to 2nd level
 
-                
+
 def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn and rng are pass-through to rng+ and der+
     # initialization:
     P_ = []
@@ -120,56 +117,119 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
             P.dert_ += [dert]
         x += 1
         _sign = sign
+        
     '''
     due to separate aves, P may be processed by both or neither of r fork and d fork
     add separate rsublayers and dsublayers?
     '''
-    # range_incr_P_(rootP, P_, rdn, rng)
-    # deriv_incr_P_(rootP, P_, rdn, rng)
-    if logging:
-
+    range_incr_P_(rootP, P_, rdn, rng)
+    deriv_incr_P_(rootP, P_, rdn, rng)
+    
+    if logging == 2:
         if fPd == False:
-            logfile_name = "layer1_Pm_log_py.csv"
+            logfile_name = "level2_Pm_log_py.csv"
         else: 
-            logfile_name = "layer1_Pd_log_py.csv"
+            logfile_name = "level2_Pd_log_py.csv"
 
-        with open(logfile_name, "a") as csvFile_1:
-            write = csv.writer(csvFile_1, delimiter=",")
+        with open(logfile_name, "a") as csvFile_2:
+            write = csv.writer(csvFile_2, delimiter=",")
             for id, val in enumerate(P_):
                 write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.sublayers])
 
     return P_  # used only if not rootP, else packed in rootP.sublayers
 
 
+def range_incr_P_(rootP, P_, rdn, rng):
+
+    comb_sublayers = []
+    for P in P_:
+        if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
+            ''' P is Pm   
+            min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
+            '''
+            rdn += 1; rng += 1
+            P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+            sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
+            P.sublayers = [(sub_Pm_, sub_Pd_)]  # 1st layer
+            rdert_ = []
+            _i = P.dert_[0].i
+            for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
+                # skip predictable next dert, local ave? add rdn to higher | stronger layers:
+                d = dert.i - _i
+                rp = dert.p + _i  # intensity accumulated in rng
+                rd = dert.d + d  # difference accumulated in rng
+                rm = ave*rng - abs(rd)  # m accumulated in rng
+                rmrdn = rm < 0
+                rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
+                _i = dert.i
+            sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
+            sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
+
+        if rootP and P.sublayers:
+            new_comb_sublayers = []
+            for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
+                comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+                comb_sub_Pd_ += sub_Pd_
+                new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+            comb_sublayers = new_comb_sublayers
+
+    if rootP:
+        rootP.sublayers += comb_sublayers  # no return
+
+def deriv_incr_P_(rootP, P_, rdn, rng):
+
+    comb_sublayers = []
+    for P in P_:
+        if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
+            rdn += 1; rng += 1
+            P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+            sub_Pm_, sub_Pd_ = [], []
+            P.sublayers = [(sub_Pm_, sub_Pd_)]
+            ddert_ = []
+            _d = abs(P.dert_[0].d)
+            for dert in P.dert_[1:]:  # all same-sign in Pd
+                d = abs(dert.d)  # compare ds
+                rd = d + _d
+                dd = d - _d
+                md = min(d, _d) - abs(dd / 2) - ave_min  # min_match because magnitude of derived vars corresponds to predictive value
+                dmrdn = md < 0
+                ddert_.append(Cdert(i=dert.d, p=rd, d=dd, m=md, dmrdn=dmrdn))
+                _d = d
+            sub_Pm_[:] = form_P_(P, ddert_, rdn, rng, fPd=False)  # cluster by mm sign
+            sub_Pd_[:] = form_P_(P, ddert_, rdn, rng, fPd=True)  # cluster by md sign
+
+        if rootP and P.sublayers:
+            new_comb_sublayers = []
+            for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
+                comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+                comb_sub_Pd_ += sub_Pd_
+                new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+            comb_sublayers = new_comb_sublayers
+
+    if rootP:
+        rootP.sublayers += comb_sublayers  # no return
+
+
 if __name__ == "__main__":
-    ''' 
-    Parse argument (image)
-    argument_parser = argparse.ArgumentParser()
-    argument_parser.add_argument('-i', '--image', help='path to image file', default='.//raccoon.jpg')
-    arguments = vars(argument_parser.parse_args())
-    # Read image
-    image = cv2.imread(arguments['image'], 0).astype(int)  # load pix-mapped image
-    '''
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 0  # logging of local functions variables
+    logging = 2  # logging of level 1 or level 2 data structuring
 
-    if logging:
-        import csv
-        # with open("layer0_log_py.csv", "w") as csvFile_0:
-        #     write = csv.writer(csvFile_0, delimiter=",")
-        #     parameter_names = ["i", "p", "d", "m", "mrdn"]
-        #     write.writerow(parameter_names)
-
-        with open("layer1_Pm_log_py.csv", "w") as csvFile_1:
+    if logging == 1:
+        with open("level1_log_py.csv", "w") as csvFile_1:
             write = csv.writer(csvFile_1, delimiter=",")
-            parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_", "sublayers"]
+            parameter_names = ["i", "p", "d", "m", "mrdn"]
             write.writerow(parameter_names)
 
-        with open("layer1_Pd_log_py.csv", "w") as csvFile_1:
-            write = csv.writer(csvFile_1, delimiter=",")
-            parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_", "sublayers"]
+    if logging == 2:
+        parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_", "sublayers"]
+        with open("level2_Pm_log_py.csv", "w") as csvFile_2:
+            write = csv.writer(csvFile_2, delimiter=",")
+            write.writerow(parameter_names)
+
+        with open("level2_Pd_log_py.csv", "w") as csvFile_3:
+            write = csv.writer(csvFile_3, delimiter=",")
             write.writerow(parameter_names)
 
     start_time = time()
@@ -180,7 +240,7 @@ if __name__ == "__main__":
     Y, X = image.shape  # Y: frame height, X: frame width
     frame = []
     for y in range(init_y, min(halt_y, Y)):  # y is index of new row pixel_, we only need one row, use init_y=0, halt_y=Y for full frame
-
+        # print("line",y)
         line = line_Ps_root( image[y,:])  # line = [Pm_, Pd_]
         if fline_PPs:
             from line_PPs import line_PPs_root
