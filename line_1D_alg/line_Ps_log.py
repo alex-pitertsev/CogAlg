@@ -125,16 +125,17 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     range_incr_P_(rootP, P_, rdn, rng)
     # deriv_incr_P_(rootP, P_, rdn, rng)
     
-    if logging == 2:
-        if fPd == False:
-            logfile_name = "layer2_Pm_log_py.csv"
-        else: 
-            logfile_name = "layer2_Pd_log_py.csv"
+    # if logging == 2:
+    #     if fPd == False:
+    #         logfile_name = "layer2_Pm_log_py.csv"
+    #     else: 
+    #         logfile_name = "layer2_Pd_log_py.csv"
 
-        with open(logfile_name, "a") as csvFile_2:
-            write = csv.writer(csvFile_2, delimiter=",")
-            for id, val in enumerate(P_):
-                write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.subset, val.sublayers])
+    #     with open(logfile_name, "a") as csvFile_2:
+    #         write = csv.writer(csvFile_2, delimiter=",")
+    #         for id, val in enumerate(P_):
+    #             # write.writerow(parameter_names)
+    #             write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.subset, val.sublayers])
 
     return P_  # used only if not rootP, else packed in rootP.sublayers
 
@@ -162,75 +163,89 @@ def range_incr_P_(rootP, P_, rdn, rng):
             rmrdn = rm < 0
             rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
             _i = dert.i
+
+        if logging == 3:
+            with open("layer3_log_py.csv", "a") as csvFile_4:
+                write = csv.writer(csvFile_4, delimiter=",")
+                for id, val in enumerate(rdert_):
+                    write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
+
         sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
         sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
 
-        if rootP and P.sublayers:
-            new_comb_sublayers = []
-            for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
-                comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
-                comb_sub_Pd_ += sub_Pd_
-                new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
-            comb_sublayers = new_comb_sublayers
+        # if rootP and P.sublayers:
+        #     new_comb_sublayers = []
+        #     for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
+        #         comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+        #         comb_sub_Pd_ += sub_Pd_
+        #         new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+        #     comb_sublayers = new_comb_sublayers
 
-    if rootP:
-        rootP.sublayers += comb_sublayers  # no return
+    # if rootP:
+    #     rootP.sublayers += comb_sublayers  # no return
 
-def deriv_incr_P_(rootP, P_, rdn, rng):
+# def deriv_incr_P_(rootP, P_, rdn, rng):
 
-    comb_sublayers = []
-    for P in P_:
-        if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
-            rdn += 1; rng += 1
-            P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-            sub_Pm_, sub_Pd_ = [], []
-            P.sublayers = [(sub_Pm_, sub_Pd_)]
-            ddert_ = []
-            _d = abs(P.dert_[0].d)
-            for dert in P.dert_[1:]:  # all same-sign in Pd
-                d = abs(dert.d)  # compare ds
-                rd = d + _d
-                dd = d - _d
-                md = min(d, _d) - abs(dd / 2) - ave_min  # min_match because magnitude of derived vars corresponds to predictive value
-                dmrdn = md < 0
-                ddert_.append(Cdert(i=dert.d, p=rd, d=dd, m=md, dmrdn=dmrdn))
-                _d = d
-            sub_Pm_[:] = form_P_(P, ddert_, rdn, rng, fPd=False)  # cluster by mm sign
-            sub_Pd_[:] = form_P_(P, ddert_, rdn, rng, fPd=True)  # cluster by md sign
+#     comb_sublayers = []
+#     for P in P_:
+#         if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
+#             rdn += 1; rng += 1
+#             P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+#             sub_Pm_, sub_Pd_ = [], []
+#             P.sublayers = [(sub_Pm_, sub_Pd_)]
+#             ddert_ = []
+#             _d = abs(P.dert_[0].d)
+#             for dert in P.dert_[1:]:  # all same-sign in Pd
+#                 d = abs(dert.d)  # compare ds
+#                 rd = d + _d
+#                 dd = d - _d
+#                 md = min(d, _d) - abs(dd / 2) - ave_min  # min_match because magnitude of derived vars corresponds to predictive value
+#                 dmrdn = md < 0
+#                 ddert_.append(Cdert(i=dert.d, p=rd, d=dd, m=md, dmrdn=dmrdn))
+#                 _d = d
+#             sub_Pm_[:] = form_P_(P, ddert_, rdn, rng, fPd=False)  # cluster by mm sign
+#             sub_Pd_[:] = form_P_(P, ddert_, rdn, rng, fPd=True)  # cluster by md sign
 
-        if rootP and P.sublayers:
-            new_comb_sublayers = []
-            for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
-                comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
-                comb_sub_Pd_ += sub_Pd_
-                new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
-            comb_sublayers = new_comb_sublayers
+#         if rootP and P.sublayers:
+#             new_comb_sublayers = []
+#             for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
+#                 comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+#                 comb_sub_Pd_ += sub_Pd_
+#                 new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+#             comb_sublayers = new_comb_sublayers
 
-    if rootP:
-        rootP.sublayers += comb_sublayers  # no return
+#     if rootP:
+#         rootP.sublayers += comb_sublayers  # no return
 
 
 if __name__ == "__main__":
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 2  # logging of level 1 or level 2 data structuring
+    logging = 3  # logging of level 1 or level 2 data structuring
 
     if logging == 1:
+        parameter_names = ["i", "p", "d", "m", "mrdn"]
         with open("layer1_log_py.csv", "w") as csvFile_1:
             write = csv.writer(csvFile_1, delimiter=",")
-            parameter_names = ["i", "p", "d", "m", "mrdn"]
             write.writerow(parameter_names)
 
     if logging == 2:
         parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_","subset", "sublayers"]
-        with open("layer2_Pm_log_py.csv", "w") as csvFile_2:
+        # Clear previous log files
+        with open("layer2_Pd_log_py.csv", "w") as csvFile_2:
             write = csv.writer(csvFile_2, delimiter=",")
             write.writerow(parameter_names)
-
-        with open("layer2_Pd_log_py.csv", "w") as csvFile_3:
+        with open("layer2_Pm_log_py.csv", "w") as csvFile_3:
             write = csv.writer(csvFile_3, delimiter=",")
             write.writerow(parameter_names)
+
+    if logging == 3:
+        parameter_names = ["i", "p", "d", "m", "mrdn"]
+        with open("layer3_log_py.csv", "w") as csvFile_4:
+            write = csv.writer(csvFile_4, delimiter=",")
+            write.writerow(parameter_names)
+
 
     start_time = time()
     image = cv2.imread('.//raccoon.jpg', 0).astype(int)  # manual load pix-mapped image

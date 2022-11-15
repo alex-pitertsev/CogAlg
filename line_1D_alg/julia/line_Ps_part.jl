@@ -18,7 +18,7 @@
   These forks here are exclusive per P to avoid redundancy, but they do overlap in line_patterns_olp.
 """
 
-using Images, ImageView, CSV
+using Images, ImageView, CSV, Tables
 
 # instead of the class in Python version in Julia values are stored in the struct
 mutable struct Cdert_
@@ -73,6 +73,7 @@ halt_y = 501  # ending row, set 999999999 for arbitrary image.
 """
 
 function range_incr_P_(rootP, P_, rdn, rng)
+
     comb_sublayers = []  #+ The same notation 
     for (id, P) in enumerate(P_)
         # if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2  # M value adjusted for xP and higher-layers redundancy
@@ -81,24 +82,30 @@ function range_incr_P_(rootP, P_, rdn, rng)
             min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
             """
             rdn += 1; rng += 1
-            # P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-            push!(P_[id].subset, [rdn, rng, [], [], [], []])  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-            
+            P.subset = [rdn, rng, [], [], [], []]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
             sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
-            push!(P_[id].sublayers, [sub_Pm_, sub_Pd_])  # 1st layer
+            P.sublayers = [sub_Pm_, sub_Pd_]  # 1st layer
             rdert_ = []
+            _i = P.dert_[1].i #! differs from python, starting with 1
         # end
-    #         _i = P.dert_[0].i
-    #         for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
+            for dert in P.dert_[3:2:end]  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
     #             # skip predictable next dert, local ave? add rdn to higher | stronger layers:
-    #             d = dert.i - _i
-    #             rp = dert.p + _i  # intensity accumulated in rng
-    #             rd = dert.d + d  # difference accumulated in rng
-    #             rm = ave*rng - abs(rd)  # m accumulated in rng
-    #             rmrdn = rm < 0
-    #             rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
-    #             _i = dert.i
-    #         sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
+                d = dert.i - _i
+                rp = dert.p + _i  # intensity accumulated in rng
+                rd = dert.d + d  # difference accumulated in rng
+                rm = ave*rng - abs(rd)  # m accumulated in rng
+                rmrdn = rm < 0
+                push!(rdert_, Cdert_(dert.i, rp, rd, rm, rmrdn))
+                _i = dert.i
+            end
+
+            if logging == 3
+                CSV.write("./layer3_log_jl.csv", rdert_, append = true, )
+            end
+
+            sub_Pm_ = form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=false)
+            # sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
+            sub_Pd_ = form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=true)
     #         sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
     #     if rootP and P.sublayers:
     #         new_comb_sublayers = []
@@ -113,10 +120,11 @@ function range_incr_P_(rootP, P_, rdn, rng)
     # end
 end
 
+
 function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keyword args are placed
     # initialization:
     P_ = CP[]  # structure to store all the form_P (layer1) output
-    x = 0
+        x = 0
     _sign = nothing  # to initialize 1st P, (nothing != True) and (nothing != False) are both True
 
     for dert in dert_  # segment by sign
@@ -147,13 +155,15 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
     # deriv_incr_P_(rootP, P_, rdn, rng)
     if logging == 2
         if fPd == false
-            CSV.write("./layer2_Pm_log_jl.csv", P_)
+            # CSV.write("./layer2_Pm_log_jl.csv", P_, header = true, append = true)
+            CSV.write("./layer2_Pm_log_jl.csv", P_, append = true)
         else
-            CSV.write("./layer2_Pd_log_jl.csv", P_)
+            # CSV.write("./layer2_Pd_log_jl.csv", P_, header = true, append = true)
+            CSV.write("./layer2_Pd_log_jl.csv", P_, append = true)
         end
     end
     
-    # return P_  # used only if not rootP, else packed in rootP.sublayers
+    return P_  # used only if not rootP, else packed in rootP.sublayers
 end
 
 function line_Ps_root(pixel_)  # Ps: patterns, converts frame_of_pixels to frame_of_patterns, each pattern may be nested
@@ -184,7 +194,17 @@ end
 render = 0
 fline_PPs = 0
 frecursive = 0
-logging = 0  # logging of local functions variables
+logging = 3  # logging of local functions variables
+
+if logging == 2
+    parameter_names = ["L" "I" "D" "M" "Rdn" "x0" "dert_" "subset" "sublayers"]  # Vector
+    CSV.write("./layer2_Pm_log_jl.csv", Tables.table(parameter_names), writeheader=false)
+end
+
+if logging == 3
+    parameter_names = ["L" "I" "D" "M" "Rdn" "x0" "dert_" "subset" "sublayers"]  # Vector
+    CSV.write("./layer2_Pm_log_jl.csv", Tables.table(parameter_names), writeheader=false)
+end
 
 # image_path = "./line_1D_alg/raccoon.jpg";
 image_path = "/home/alex/Python/CogAlg/line_1D_alg/raccoon.jpg";
