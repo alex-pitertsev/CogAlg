@@ -5,329 +5,519 @@ from copy import deepcopy, copy
 from class_cluster import ClusterStructure, NoneType, comp_param, Cdert
 import math as math
 from comp_slice import *
+
 '''
-Blob edges may be represented by higher-composition PPPs, etc., if top param-layer match,
-in combination with spliced lower-composition PPs, etc, if only lower param-layers match.
-This may form closed edge patterns around flat blobs, which defines stable objects.   
-'''
-
-# agg-recursive versions should be more complex?
-class CderPP(ClusterStructure):  # tuple of derivatives in PP uplink_ or downlink_, PP can also be PPP, etc.
-
-    # draft
-    params = list  # PP derivation layer, flat, decoded by mapping each m,d to lower-layer param
-    x0 = int  # redundant to params:
-    x = float  # median x
-    L = int  # pack in params?
-    sign = NoneType  # g-ave + ave-ga sign
-    y = int  # for vertical gaps in PP.P__, replace with derP.P.y?
-    PP = object  # lower comparand
-    _PP = object  # higher comparand
-    root = lambda:None  # segment in sub_recursion
-    # higher derivatives
-    rdn = int  # mrdn, + uprdn if branch overlap?
-    uplink_layers = lambda: [[],[]]  # init a layer of dderPs and a layer of match_dderPs
-    downlink_layers = lambda: [[],[]]
-   # from comp_dx
-    fdx = NoneType
-
-class CPPP(CPP, CderPP):
-
-    # draft
-    params = list  # derivation layers += derP params per der+, param L is actually Area
-    sign = bool
-    rng = lambda: 1  # rng starts with 1
-    rdn = int  # for PP evaluation, recursion count + Rdn / nderPs
-    Rdn = int  # for accumulation only
-    nP = int  # len 2D derP__ in levels[0][fPd]?  ly = len(derP__), also x, y?
-    uplink_layers = lambda: [[],[]]
-    downlink_layers = lambda: [[],[]]
-    fPPm = NoneType  # PPm if 1, else PPd; not needed if packed in PP_
-    fdiv = NoneType
-    box = list  # for visualization only, original box before flipping
-    mask__ = bool
-    P__ = list  # input  # derP__ = list  # redundant to P__
-    seg_levels = lambda: [[[]],[[]]]  # from 1st agg_recursion, seg_levels[0] is seg_t, higher seg_levels are segP_t s
-    PPP_levels = list  # from 2nd agg_recursion, PP_t = levels[0], from form_PP, before recursion
-    layers = list  # from sub_recursion, each is derP_t
-    root = lambda:None  # higher-order segP or PPP
-
-
-def agg_recursion(blob, fseg):  # compositional recursion per blob.Plevel. P, PP, PPP are relative terms, each may be of any composition order
-
-    if fseg: PP_t = [blob.seg_levels[0][-1], blob.seg_levels[1][-1]]   # blob is actually PP, recursion forms segP_t, seg_PP_t, etc.
-    else:    PP_t = [blob.levels[0][-1], blob.levels[1][-1]]  # input-level composition Ps, initially PPs
-
-    PPP_t = []  # next-level composition Ps, initially PPPs  # for fiPd, PP_ in enumerate(PP_t): fiPd = fiPd % 2  # dir_blob.M += PP.M += derP.m
-    n_extended = 0
-
-    for fiPd, PP_ in enumerate(PP_t):   # fiPd = fiPd % 2
-        if fiPd: ave_PP = ave_dPP
-        else:    ave_PP = ave_mPP
-        if fseg: M = sum_named_param(blob.params, "val", fPd=0) - ave  # actually ave * nptuples in params
-        else:    M = ave-abs(blob.G)  # if M > ave_PP * blob.rdn and len(PP_)>1:  # >=2 comparands
-
-        if len(PP_)>1:
-            n_extended += 1
-            derPP_t = comp_PP_(PP_)  # compare all PPs to the average (centroid) of all other PPs, is generic for lower level
-            PPP_t = form_PPP_t(derPP_t)
-            # call individual comp_PP if mPPP > ave_mPPP, converting derPP to CPPP
-            splice_PPs(PPP_t)  # for initial PPs only: if PP is CPP?
-            sub_recursion_eval(PPP_t[0])  # fPd=0, rng+
-            sub_recursion_eval(PPP_t[1])  # fPd=1, der+
-        else:
-            PPP_t += [[], []]  # replace with neg PPPs?
-
-    if fseg: blob.seg_levels += [PPP_t]  # new level of segPs
-    else:    blob.levels += [PPP_t]  # levels of dir_blob are Plevels
-
-    if n_extended/len(PP_t) > 0.5:  # mean ratio of extended PPs
-        agg_recursion(blob, fseg)
-'''
-- Compare each PP to the average (centroid) of all other PPs in PP_, or maximal cartesian distance, forming derPPs.  
-- Select above-average derPPs as PPPs, representing summed derivatives over comp range, overlapping between PPPs.
+Blob edges may be represented by higher-composition patterns, etc., if top param-layer match,
+in combination with spliced lower-composition patterns, etc, if only lower param-layers match.
+This may form closed edge patterns around flat core blobs, which defines stable objects.   
 '''
 
-def comp_PP_(PP_, fsubder=0):  # PP can also be PPP, etc.
-
-    pre_PPPm_, pre_PPPd_ = [],[]
-
-    for PP in PP_:
-        compared_PP_ = copy(PP_)  # shallow copy
-        compared_PP_.remove(PP)
-        summed_params = init_params(PP.params, [])  # form empty (Cptuples, n=0)s, nested as PP params
-
-        for compared_PP in compared_PP_:  # accum summed_params over compared_PP_:
-            sum_layers(summed_params, compared_PP.params)
-        sum_params = deepcopy(summed_params)
-        ave_layers(sum_params)
-
-        pre_PPP = CPP(params=deepcopy(PP.params), layers= PP.layers+[PP_])  # comp_ave- defined pre_PPP inherits PP.params
-        pre_PPP.params += [comp_layers(PP.params, sum_params, der_layers=[],fsubder=fsubder)]  # sum_params is now ave_params
-        '''
-        comp to ave params of compared PPs, form new layer: derivatives of all lower layers, 
-        initial 3 layer nesting diagram: https://github.com/assets/52521979/ea6d436a-6c5e-429f-a152-ec89e715ebd6
-        '''
-        pre_PPPm_.append(copy_P(pre_PPP, Ptype=2))  # Ptype 2 is now PPP, we don't need Ptype 3?
-        pre_PPPd_.append(copy_P(pre_PPP, Ptype=2))
-
-    return pre_PPPm_, pre_PPPd_
-'''
-1st and 2nd layers are single sublayers, the 2nd adds tuple pair nesting. Both are unpacked by func_pairs, not func_layers.  
-Multiple sublayers start on the 3rd layer, because it's derived from comparison between two (not one) lower layers. 
-4th layer is derived from comparison between 3 lower layers, where the 3rd layer is already nested, etc:
-'''
-def init_params(params, ptupless):  # form (blank Cptuple, 0)s with nesting structure of PP params
-
-    for layer in params:
-        if isinstance(layer, list):
-            ptuples = init_params(layer, [])  # unpack down to ptuples
-        else:
-            ptuples = [Cptuple(), 0]  # "layer" is ptuple
-            if not isinstance(layer.angle, list):  # angle and aangle are lists in init Cptuple
-                ptuples.angle = 0; ptuples.aangle = 0
-
-    return ptupless + [ptuples]
+ave_G = 6  # fixed costs per G
+ave_Gm = 5  # for inclusion in graph
+ave_Gd = 4
+G_aves = [ave_Gm, ave_Gd]
+ave_med = 3  # call cluster_node_layer
+ave_rng = 3  # rng per combined val
+ave_ext = 5  # to eval comp_plevel
+ave_len = 3
+ave_distance = 5
+ave_sparsity = 2
 
 
-def comp_layers(_layers, layers, der_layers, fsubder=0):  # only for agg_recursion, each param layer may consist of sub_layers
+class Cgraph(CPP):  # graph or generic PP of any composition
 
-    # recursive unpack of nested param layers, each layer is ptuple pair_layers if from der+
-    der_layers += [comp_pair_layers(_layers[0], layers[0], der_pair_layers=[], fsubder=fsubder)]
-
-    # recursive unpack of deeper layers, nested in 3rd and higher layers, if any from agg+, down to nested tuple pairs
-    for _layer, layer in zip(_layers[1:], layers[1:]):  # layer = deeper sub_layers, stop if none
-        der_layers += [comp_layers(_layer, layer, der_layers=[], fsubder=fsubder)]
-
-    return der_layers # possibly nested param layers
-
-
-def sum_layers(Params, params):  # Capitalized names for sums, as comp_layers but no separate der_layers to return
-
-    sum_pair_layers(Params[0], params[0])  # recursive unpack of nested ptuple pair_layers, if any from der+
-    # different from comp_slice version, increments ptuple.n in ind_comp_PP and (ptuple, n) in comp_PP_?
-
-    for Layer, layer, n in zip(Params[1:], params[1:]):
-        sum_layers(Layer, layer)  # recursive unpack of higher layers, if any from agg+ and nested with sub_layers
-
-
-def ave_layers(summed_params):  # as sum_layers but single arg
-
-    ave_pairs(summed_params[0])  # recursive unpack of nested ptuple pairs, if any from der+
-    for summed_layer in summed_params[1:]:
-        ave_layers(summed_layer)  # recursive unpack of higher layers, if any from agg+ and nested with sub_layers
-
-def ave_pairs(sum_pairs):  # recursively unpack m,d tuple pairs from der+
-
-    if isinstance(sum_pairs[0], Cptuple):  # sum_pairs is latuple
-        if sum_pairs[1]:  # n>0, not empty ptuple
-            ave_ptuple(sum_pairs)
-
-    elif isinstance(sum_pairs[0][0], Cptuple):  # sum_pairs is two vertuples, 1st layer in der+
-        if sum_pairs[0][1]: ave_ptuple(sum_pairs[0])  # if n>0
-        if sum_pairs[1][1]: ave_ptuple(sum_pairs[1])  # if is probably redundant
-
-    else:  # sum_pairs is pair_layers:
-        for sum_pair in sum_pairs:
-            ave_pairs(sum_pair)
-
-    return sum_pairs  # sum_pairs is now ave_pairs, possibly nested m,d ptuple pairs
-
-def ave_ptuple(ptuple_n):
-
-    ptuple, n = ptuple_n[:]
-
-    for param_name in (ptuple.numeric_params):
-        setattr(ptuple, param_name, getattr(ptuple, param_name)/n)
-
-    if isinstance(ptuple.angle, list):
-        for i, dir_val in enumerate(ptuple.angle):
-            ptuple.angle[i] = dir_val / n
-        for i, dir_val in enumerate(ptuple.aangle):
-            ptuple.aangle[i] = dir_val / n
-    else: # scalar
-        ptuple.angle /= n
-        ptuple.aangle /= n
+    plevels = list  # plevel_t[1]s is summed from alt_graph_, sub comp support, agg comp suppression?
+    fds = list  # prior forks in plevels, then player fds in plevel
+    valt = lambda: [0, 0]
+    nvalt = lambda: [0,0]  # from neg open links
+    angle = lambda: [0,0]  # dy,dx, comp if derG or high-aspect (maxL/minL) G
+    sparsity = float  # sum(node.sparsity for node in G.node_) / L, starting with derG distance
+    rdn = int  # for PP evaluation, recursion count + Rdn / nderPs; no alt_rdn: valt representation in alt_PP_ valts?
+    rng = lambda: 1  # not for alt_graphs
+    medG_ = list  # last checked mediating [mG, dir_link, G]s, from all nodes?
+    link_ = list  # evaluated graph links, open links replace alt_node
+    node_ = list  # graph elements, root of layers, levels:
+    rlayers = list  # | mlayers, top-down
+    dlayers = list  # | alayers
+    mlevels = list  # agg_PPs ) agg_PPPs ) agg_PPPPs.., bottom-up
+    dlevels = list
+    roott = lambda: [None, None]  # higher-order segG or graph
+    alt_graph_ = list
 
 
-def sum_named_param(p_layer, param_name, fPd):
-    psum = 0  # sum of named param across param layers
+def agg_recursion(root, G_, fseg):  # compositional recursion in root.PP_, pretty sure we still need fseg, process should be different
 
-    if isinstance(p_layer, Cptuple):  # 1st layer is ptuple, not for angle and aangle elements, if any
-        psum += getattr(p_layer, param_name)
-    elif len(p_layer)>1:  # for multiple layer params
-        if isinstance(p_layer[0], Cptuple) and isinstance(p_layer[1], Cptuple) :  # 1st layer is 2 vertuples, from der+
-            psum += getattr(p_layer[fPd], param_name)
-        else:  # keep unpacking:
-            for sub_p_layer in p_layer:
-                psum += sum_named_param(sub_p_layer, param_name, fPd)
-    return psum
+    mgraph_, dgraph_ = form_graph_(root, G_, fder=0)  # PP cross-comp and clustering
+
+    # intra graph:
+    if root.valt[0] > ave_sub * root.rdn:
+        sub_rlayers, rvalt = sub_recursion_g(mgraph_, root.valt, fd=0)  # subdivide graph.node_ by der+|rng+, accum root.valt
+        root.valt[0] += sum(rvalt); root.rlayers = sub_rlayers
+    if root.valt[1] > ave_sub * root.rdn:
+        sub_dlayers, dvalt = sub_recursion_g(dgraph_, root.valt, fd=1)
+        root.valt[1] += sum(dvalt); root.dlayers = sub_dlayers
+
+    # cross graph:
+    root.mlevels += mgraph_; root.dlevels += dgraph_
+    for fd, graph_ in enumerate([mgraph_, dgraph_]):
+        # agg+ if new plevel valt:
+        if (sum(root.plevels[-1][1]) > G_aves[fd] * ave_agg * (root.rdn + 1)) and len(graph_) > ave_nsub:
+            root.rdn += 1  # estimate
+            agg_recursion(root, graph_, fseg=fseg)  # cross-comp graphs
 
 
-def form_PPP_t(pre_PPP_t):  # form PPs from match-connected segs
-    PPP_t = []
+def form_graph_(root, G_, fder):  # forms plevel in agg+ or player in sub+, G is potential node graph, in higher-order GG graph
 
-    for fPd, pre_PPP_ in enumerate(pre_PPP_t):
-        # sort by value of last layer: derivatives of all lower layers:
-        pre_PPP_ = sorted(pre_PPP_, key=lambda pre_PPP: sum_named_param(pre_PPP.params[-1], 'val', fPd), reverse=True)  # descending order
-        PPP_ = []
-        for i, pre_PPP in enumerate(pre_PPP_):
-            pre_PPP_val = sum_named_param(pre_PPP.params, 'val', fPd=fPd)
-            for param_layer in pre_PPP.params:  # may need recursive unpack here
-                pre_PPP.rdn += sum_named_param(param_layer, 'val', fPd=fPd)> sum_named_param(param_layer, 'val', fPd=1-fPd)
-            ave = vaves[fPd] * pre_PPP.rdn * (i+1)  # derPP is redundant to higher-value previous derPPs in derPP_
-            if pre_PPP_val > ave:
-                PPP_ += [pre_PPP]  # base derPP and PPP is CPP
-                if pre_PPP_val > ave*10:
-                    ind_comp_PP_(pre_PPP, fPd)  # derPP is converted from CPP to CPPP
+    for G in G_:  # initialize mgraph, dgraph as roott per G, for comp_G_
+        for i in 0,1:
+            graph = [[G], [], [0,0]]  # proto-GG: [node_, medG_, valt]
+            G.roott[i] = graph
+
+    comp_G_(G_, fder)  # cross-comp all graphs within rng, graphs may be segs
+    mgraph_, dgraph_ = [],[]  # initialize graphs with >0 positive links in graph roots:
+    for G in G_:
+        if len(G.roott[0][0])>1: mgraph_ += [G.roott[0]]  # root = [node_, valt] for cluster_node_layer eval, + link_nvalt?
+        if len(G.roott[1][0])>1: dgraph_ += [G.roott[1]]
+
+    for fd, graph_ in enumerate([mgraph_, dgraph_]):  # evaluate intermediate nodes to delete or merge graphs:
+        regraph_ = []
+        while graph_:
+            graph = graph_.pop(0)
+            eval_med_layer(graph_= graph_, graph=graph, fd=fd)
+            if graph[2][fd] > ave_agg: regraph_ += [graph]  # graph reformed by merges and removes above
+
+        if regraph_:
+            graph_[:] = sum2graph_(regraph_, fd, fder)  # sum proto-graph node_ params in graph
+            plevels = deepcopy(graph_[0].plevels); fds = graph_[0].fds  # same for all nodes?
+            for graph in graph_[1:]:
+                sum_plevels(plevels, graph.plevels, fds, graph.fds)  # each plevel is (caTree, valt)
+            root.plevels = plevels
+
+    return mgraph_, dgraph_
+
+
+def comp_G_(G_, fder):  # cross-comp Gs (patterns of patterns): Gs, derGs, or segs inside PP
+
+    for i, _G in enumerate(G_):
+
+        for G in G_[i+1:]:  # compare each G to other Gs in rng, bilateral link assign
+            if G in [node for link in _G.link_ for node in link.node_]:  # G,_G was compared in prior rng+, add frng to skip?
+                continue
+            # comp external params:
+            _x = (_G.xn +_G.x0)/2; _y = (_G.yn +_G.y0)/2; x = (G.xn + G.x0)/2; y = (G.yn + G.y0)/2
+            dx = _x - x; dy = _y - y
+            distance = np.hypot(dy, dx)  # Euclidean distance between centroids, sum in G.sparsity
+            proximity = ave_rng-distance  # coord match
+
+            mang, dang = comp_angle(_G.angle, G.angle)  # dy,dx for derG or high-aspect Gs, both *= aspect?
+            # n orders of len and sparsity, -= fill: sparsity inside nodes?
+            if fder:
+                mlen,dlen = 0,0; _sparsity = _G.sparsity; sparsity = G.sparsity  # single-link derGs
             else:
-                break  # ignore below-ave PPs
-        PPP_t.append(PPP_)
-    return PPP_t
+                _L = len(_G.node_); L = len(G.node_)
+                dlen = _L - L; mlen = min(_L, L)
+                if isinstance(G.node_[0], Cgraph):
+                    _sparsity = sum(node.sparsity for node in _G.node_) / _L
+                    sparsity = sum(node.sparsity for node in G.node_) / L
+                else:  # G.node_[0] could be CP (fseg=1) or [CP]
+                    _sparsity, sparsity = 1, 1
+
+            dspar = _sparsity-sparsity; mspar = min(_sparsity,sparsity)
+            # draft:
+            mext = [proximity, mang, mlen, mspar]; mVal = proximity + mang + mlen + mspar
+            dext = [distance, dang, dlen, dspar];  dVal = distance + dang + dlen + dspar
+            derext = [mext,dext,mVal,dVal]
+
+            if mVal > ave_ext * ((sum(_G.valt)+sum(G.valt)) / (2*sum(G_aves))):  # max depends on combined G value
+                mplevel, dplevel = comp_plevels(_G.plevels, G.plevels, _G.fds, G.fds, derext)
+                valt = [mplevel[1] - ave_Gm, dplevel[1] - ave_Gd]  # norm valt: *= link rdn?
+                derG = Cgraph(  # or mean x0=_x+dx/2, y0=_y+dy/2:
+                    plevels=[mplevel,dplevel], y0=min(G.y0,_G.y0), yn=max(G.yn,_G.yn), x0=min(G.x0,_G.x0), xn=max(G.xn,_G.xn),
+                    sparsity=distance, angle=[dy,dx], valt=valt, node_=[_G,G])
+                _G.link_ += [derG]; G.link_ += [derG]  # any val
+                for fd in 0,1:
+                    if valt[fd] > 0:  # alt fork is redundant, no support?
+                        for node, (graph, medG_, gvalt) in zip([_G, G], [G.roott[fd], _G.roott[fd]]):  # bilateral inclusion
+                            if node not in graph:
+                                graph += [node]
+                                for derG in node.link_:
+                                    mG = derG.node_[0] if derG.node_[1] is node else derG.node_[1]
+                                    if mG not in medG_:
+                                        medG_ += [[mG, derG, _G]]  # derG is init dir_mderG
+                                gvalt[0] += node.valt[0]; gvalt[1] += node.valt[1]
+
+# draft:
+def eval_med_layer(graph_, graph, fd):   # recursive eval of reciprocal links from increasingly mediated nodes
+
+    node_, medG_, valt = graph  # node_ is not used here
+    save_node_, save_medG_ = [], []
+    adj_Val = 0  # adjust connect val in graph
+
+    for mG, dir_mderG, G in medG_:  # assign G and shortest direct derG to each med node?
+        mmG_ = []  # __Gs that mediate between Gs and _Gs
+        fmed = 1
+        for mderG in mG.link_:  # all direct evaluated links
+
+            mmG = mderG.node_[1] if mderG.node_[0] is mG else mderG.node_[0]
+            for derG in G.link_:
+                try_mG = derG.node_[0] if derG.node_[1] is G else derG.node_[1]
+                if mmG is try_mG:  # mmG is directly linked to G
+                    if derG.sparsity > dir_mderG.sparsity:
+                        dir_mderG = derG  # for next med eval if dir link is shorter
+                        fmed = 0
+                    break
+            if fmed:  # mderG is not reciprocal, else explore try_mG links in the rest of medG_
+                for mmderG in mmG.link_:
+                    if G in mmderG.node_:  # mmG mediates between mG and G
+                        adj_val = mmderG.valt[fd] - ave_agg  # or increase ave per mediation depth
+                        # adjust nodes:
+                        G.valt[fd] += adj_val; mG.valt[fd] += adj_val  # valts are not updated
+                        valt[fd] += adj_val; mG.roott[fd][2][fd] += adj_val  # root is not graph yet
+                        mmG = mmderG.node_[0] if mmderG.node_[0] is not mG else mmderG.node_[1]
+                        if mmG not in mmG_:  # not saved via prior mG
+                            mmG_ += [mmG]
+                            adj_Val += adj_val
+        if G.valt[fd]>0:
+            save_node_+= [G]  # G remains in graph
+            for mmG in mmG_:  # may be empty
+                if mmG not in save_medG_:
+                    save_medG_ += [[mmG, dir_mderG, G]]
+
+    add_medG_, add_node_ = [],[]
+    for mmG, dir_mderG, G in save_medG_:  # eval graph merge after adjusting graph by mediating node layer
+        _graph = mmG.roott[fd]
+        if _graph in graph_ and _graph is not graph:  # was not removed or merged via prior _G
+            _node_, _medG_, _valt = _graph
+            for _node, _medG in zip(_node_, _medG_):  # merge graphs, add direct links:
+                for _node in _node_:
+                    if _node not in add_node_ + save_node_: add_node_ += [_node]
+                for _medG in _medG_:
+                    if _medG not in add_medG_ + save_medG_: add_medG_ += [_medG]
+                for _derG in _node.link_:
+                    adj_Val += _derG.valt[fd] - ave_agg
+
+            valt[fd] += _valt[fd]
+            graph_.remove(_graph)
+
+    graph[:] = [save_node_+ add_node_, save_medG_+ add_medG_, valt]
+    if adj_Val > ave_med:  # positive adj_Val from eval mmG_
+        eval_med_layer(graph_, graph, fd)  # eval next med layer in reformed graph
+
+'''
+plevel = caForks, valt
+caFork = players, valt, fds
+player = caforks, valt  # each is der Ptuples of all lower players, per new agg span
+cafork = ptuples, valt:
+valSub = sum([ptuple.val for caFork in graph.plevels[-1][0] for player in caFork[0] for cafork in player[0] for ptuple in cafork[0]])  
+'''
+def sub_recursion_g(graph_, fseg, fd):  # rng+: extend G_ per graph, der+: replace G_ with derG_
+
+    comb_layers_t = [[],[]]
+    sub_valt = [0,0]
+    for graph in graph_:
+        if fd:
+            node_ = []  # positive links within graph
+            for node in graph.node_:
+                for link in node.link_:
+                    if link.valt[1]>0 and link not in node_:
+                        if not link.fds:  # might be converted in other graph
+                            link.fds = [fd]; link.valt = link.plevels[fd][1]; link.plevels = [link.plevels[fd]]  # single-plevel
+                        node_ += [link]
+        else: node_ = graph.node_
+
+        valSub = graph.plevels[-1][1][fd]  # last plevel valt: ca = dm if fd else md: edge or core, or single player?
+        if valSub > G_aves[fd] and len(node_) > ave_nsub:  # graph.valt eval for agg+ only
+
+            sub_mgraph_, sub_dgraph_ = form_graph_(graph, node_, fder=fd)  # cross-comp and clustering cycle
+            # rng+:
+            if graph.valt[0] > ave_sub * graph.rdn:  # >cost of calling sub_recursion and looping:
+                sub_rlayers, valt = sub_recursion_g(sub_mgraph_, graph.valt, fd=0)
+                rvalt = sum(valt); graph.valt[0] += rvalt; sub_valt[0] += rvalt  # not sure
+                graph.rlayers = [sub_mgraph_] + [sub_rlayers]
+            # der+:
+            if graph.valt[1] > ave_sub * graph.rdn:
+                sub_dlayers, valt = sub_recursion_g(sub_dgraph_, graph.valt, fd=1)
+                dvalt = sum(valt); graph.valt[1] += dvalt; sub_valt[1] += dvalt
+                graph.dlayers = [sub_dgraph_] + [sub_dlayers]
+
+            for comb_layers, graph_layers in zip(comb_layers_t, [graph.rlayers, graph.dlayers]):
+                for i, (comb_layer, graph_layer) in enumerate(zip_longest(comb_layers, graph_layers, fillvalue=[])):
+                    if graph_layer:
+                        if i > len(comb_layers) - 1:
+                            comb_layers += [graph_layer]  # add new r|d layer
+                        else:
+                            comb_layers[i] += graph_layer  # splice r|d PP layer into existing layer
+
+    return comb_layers_t, sub_valt
 
 
-def ind_comp_PP_(pre_PPP, fPd):  # 1-to-1 comp, _PP is converted from CPP to higher-composition CPPP
+def sum2graph_(G_, fd, fder):  # sum node and link params into graph, plevel in agg+ or player in sub+: if fder
 
-    derPP_ = []
-    rng = sum_named_param(pre_PPP.params[-1], 'val', fPd)/ 3  # 3: ave per rel_rng+=1, actual rng is Euclidean distance:
+    for (node_, _, _) in G_:  # for both derG and G: add new level of valt
+        for node in node_:
+            val2valt(node.plevels)
+            for link in node.link_:
+                for fd in 0,1:
+                    val2valt([link.plevels[fd]])
+    graph_ = []
+    for G in G_:
+        node_, medG_, valt = G
+        graph = Cgraph(fds=deepcopy(node_[0].fds), x0=node_[0].x0, xn=node_[0].xn, y0=node_[0].y0, yn=node_[0].yn, node_=node_, medG_=medG_)
+        new_plevel = [[], [0, 0]]
+        sparsity, nlinks = 0, 0
+        for node in node_:
+            graph.x0=min(graph.x0, node.x0); graph.xn=max(graph.xn, node.xn); graph.y0=min(graph.y0, node.y0); graph.yn=max(graph.yn, node.yn)
+            # accum params:
+            sum_plevels(graph.plevels, node.plevels, graph.fds, node.fds)  # same for fder
+            for derG in node.link_:
+                sum_plevel(new_plevel, derG.plevels[fd])  # accum derG
+                derG.roott[fd] = graph  # + link_ = [derG]?
+                valt[fd] += derG.valt[fd]
+                sparsity += derG.sparsity  # probably wrong, eval per node:
+                nlinks += 1
+            node.valt[0] += valt[fd]  # derG valts summed in eval_med_layer added to lower-plevels valt
+            graph.valt[0]+= node.valt[0]; graph.valt[1]+= node.valt[1]
+
+        graph.sparsity = sparsity/nlinks  # angle: of line between max distant nodes, hard to compute and value depends on aspect ratio
+        graph_ += [graph]
+        graph.plevels += [new_plevel]
+
+    for graph in graph_:  # 2nd pass: accum alt_graph_ params
+        Alt_plevels = []  # Alt_players if fsub
+        for node in graph.node_:
+            for derG in node.link_:
+                for G in derG.node_:
+                    if G not in graph.node_:  # alt graphs are roots of not-in-graph G in derG.node_
+                        alt_graph = G.roott[fd]
+                        if alt_graph not in graph.alt_graph_ and isinstance(alt_graph, Cgraph):  # not proto-graph
+                            # der+: plevels[-1] += player, rng+: players[-1] = player
+                            if fder:
+                                if Alt_plevels: sum_plevel(Alt_plevels, alt_graph.plevels[-1])  # same-length caTrees?
+                                else:           Alt_plevels = deepcopy(alt_graph.plevels[-1])
+                            else:  # agg+
+                                if Alt_plevels: sum_plevels(Alt_plevels, alt_graph.plevels, alt_graph.fds, alt_graph.fds)  # redundant fds
+                                else:           Alt_plevels = deepcopy(alt_graph.plevels)
+                            graph.alt_graph_ += [alt_graph]
+                            alt_graph.alt_graph_ += [graph]  # bilateral assign
+        if graph.alt_graph_:
+            graph.alt_graph_ += [Alt_plevels]  # temporary storage
+
+    for graph in graph_:  # 3rd pass: add alt fork to each graph plevel, separate to fix nesting in 2nd pass
+        if graph.alt_graph_:
+            Alt_plevels = graph.alt_graph_.pop()
+            graph.valt[:] = [sum(graph.valt), 0]  # all existing graph forks are relatively cis(internal) vs new alt
+            if fder:
+                add_alts(graph.plevels, Alt_plevels)  # derG, plevels are actually caForks, no loop plevels
+            else:
+                for cplevel, aplevel in zip(graph.plevels, Alt_plevels):  # G
+                    graph.valt[1] += sum(aplevel[1])  # alt valt
+                    add_alts(cplevel, aplevel)  # plevel is caForks: caTree leaves
+
+    return graph_
+
+def val2valt(plevels):
+    for plevel in plevels:
+        if not isinstance(plevel[1], list): plevel[1] = [plevel[1], 0]  # plevel valt
+        for caFork in plevel[0]:
+            if not isinstance(caFork[1], list): caFork[1] = [caFork[1], 0]  # caFork valt
+            for player in caFork[0]:
+                if not isinstance(player[1], list): player[1] = [player[1],0]  # player valt
+
+def add_alts(cplevel, aplevel):
+
+    cForks, cValt = cplevel; aForks, aValt = aplevel
+    csize = len(cForks)
+    cplevel[:] = [cForks + aForks, [sum(cValt), sum(aValt)]]  # reassign with alts
+
+    for cFork, aFork in zip(cplevel[0][:csize], cplevel[0][csize:]):
+        cplayers, cfvalt, cfds = cFork
+        aplayers, afvalt, afds = aFork
+        cFork[1] = [sum(cfvalt), afvalt[0]]
+
+        for cplayer, aplayer in zip(cplayers, aplayers):
+            cforks, cvalt = cplayer
+            aforks, avalt = aplayer
+            cplayer[:] = [cforks+aforks, [sum(cvalt), avalt[0]]]  # reassign with alts
+'''
+    plevel = caForks, valt
+    caFork = players, valt, fds 
+    player = caforks, valt
+    cafork = ptuples, valt      
+'''
+def comp_plevels(_plevels, plevels, _fds, fds, derext):
+
+    mplevel, dplevel = [],[]  # fd plevels, each cis+alt, same as new_caT
+    mval, dval = 0,0  # m,d in new plevel, else c,a
+    iVal = ave_G  # to start loop:
+
+    for _plevel, plevel, _fd, fd in zip(reversed(_plevels), reversed(plevels), _fds, fds):  # caForks (caTree)
+        if iVal < ave_G or _fd != fd:  # top-down, comp if higher plevels and fds match, same agg+
+            break
+        mTree, dTree = [],[]; mtval, dtval = 0,0  # Fork trees
+        _caForks, _valt = _plevel; caForks, valt = plevel
+
+        for _caFork, caFork in zip(_caForks, caForks):  # bottom-up alt+, pass-through fds
+            mplayers, dplayers = [],[]; mlval, dlval = 0,0
+            if _caFork and caFork:
+                mplayer, dplayer = comp_players(_caFork, caFork, derext)
+                mplayers += [mplayer]; dplayers += [dplayer]
+                mlval += mplayer[1]; dlval += dplayer[1]
+            else:
+                mplayers += [[]]; dplayers += [[]]  # to align same-length trees for comp and sum
+            # pack fds:
+            mTree += [[mplayers, mlval, caFork[2]]]; dTree += [[dplayers, dlval, caFork[2]]]
+            mtval += mlval; dtval += dlval
+        # merge trees:
+        mplevel += mTree; dplevel += mTree  # merge Trees in candidate plevels
+        mval += mtval; dval += dtval
+        iVal = mval+dval  # after 1st loop
+
+    return [mplevel,mval], [dplevel,dval]  # always single new plevel
 
 
-    for PP in pre_PPP.layers[-1]:  # 1/1 comparison between _PP and other PPs within rng
-        derPP = CderPP(PP=PP)
-        _area = sum_named_param(pre_PPP.params[0], 'L', fPd)
-        area = sum_named_param(PP.params[0], 'L', fPd)
-        dx = pre_PPP.x/_area - PP.x/area
-        dy = pre_PPP.y/_area - PP.y/area
-        distance = np.hypot(dy, dx)  # Euclidean distance between PP centroids
-        _val = sum_named_param(pre_PPP.params[-1], 'val', fPd)
-        val = sum_named_param(PP.params[-1], 'val', fPd)
+def comp_players(_caFork, caFork, derext):  # unpack and compare layers from der+
 
-        if distance / ((_val+val)/2) < rng:  # distance relative to value, vs. area?
-            params = comp_layers(pre_PPP.params, PP.params, der_layers=[])
-            pre_PPP.downlink_layers += [params]
-            PP.uplink_layers += [params]
-            derPP.params = params
-            derPP_ += [derPP]
+    mplayer, dplayer = [], []  # flat lists of ptuples, nesting decoded by mapping to lower levels
+    mVal, dVal = 0,0  # m,d in new player, else c,a
+    _players, _val, _fds =_caFork; players, val, fds = caFork
 
-    for i, _derPP in enumerate(derPP_):  # cluster derPPs into PPPs by connectivity, overwrite derPP[i]
-        if sum_named_param(_derPP.params[-1], 'val', fPd):
-            PPP = CPPP(params=deepcopy(_derPP.params), layers=[_derPP.PP])
-            PPP.accum_from(_derPP)  # initialization
-            _derPP.root = PPP
-            for derPP in derPP_[i+1:]:
-                if not derPP.PP.root:  # not sure this is needed
-                    Val = sum_named_param(derPP.params[-1], 'val', fPd)
-                    if Val:  # positive and not in PPP yet
-                        PPP.layers.append(derPP)  # multiple composition orders
-                        PPP.accum_from(_derPP)
-                        derPP.root = PPP
-                    elif Val > ave*len(derPP.params)-1:
-                         # splice PP and their segs
-                         pass
-    '''
-    if derPP.match params[-1]: form PPP
-    elif derPP.match params[:-1]: splice PPs and their segs? 
-    '''
+    for _player, player in zip(_players, players):
+        mTree, dTree = [],[]; mtval, dtval = 0,0
+        _caforks,_ = _player; caforks,_ = player
 
-def form_segPPP_root(PP_, root_rdn, fPd):  # not sure about form_seg_root
+        for _cafork, cafork in zip(_caforks, caforks):  # bottom-up alt+, pass-through fds
+            if _cafork and cafork:
+                _ptuples,_ = _cafork; ptuples,_ = cafork  # no comp valt?
+                if _ptuples and ptuples:
+                    mtuples, dtuples = comp_ptuples(_ptuples, ptuples, _fds, fds, derext)
+                    mTree += [mtuples]; dTree += [dtuples]
+                    mtval += mtuples[1]; dtval += dtuples[1]
+                else:
+                    mTree += [[]]; dTree += [[]]
+            else:
+                mTree += [[]]; dTree += [[]]
+        # merge Trees:
+        mplayer += mTree; dplayer += dTree
+        mVal += mtval; dVal += dtval
 
-    for PP in PP_:
-        link_eval(PP.uplink_layers, fPd)
-        link_eval(PP.downlink_layers, fPd)
-
-    for PP in PP_:
-        form_segPPP_(PP)
-
-def form_segPPP_(PP):
-    pass
-
-# pending update
-def splice_segs(seg_):  # in 1st run of agg_recursion
-    pass
-
-# draft, splice 2 PPs for now
-def splice_PPs(PP_, frng):  # splice select PP pairs if der+ or triplets if rng+
-
-    spliced_PP_ = []
-    while PP_:
-        _PP = PP_.pop(0)  # pop PP, so that we can differentiate between tested and untested PPs
-        tested_segs = []  # we need this because we may add new seg during splicing process, and those new seg need to check their link for splicing too
-        _segs = _PP.seg_levels[0]
-
-        while _segs:
-            _seg = _segs.pop(0)
-            _avg_y = sum([P.y for P in _seg.P__])/len(_seg.P__)  # y centroid for _seg
-
-            for link in _seg.uplink_layers[1] + _seg.downlink_layers[1]:
-                seg = link.P.root  # missing link of current seg
-
-                if seg.root is not _PP:  # this may occur after the merging where multiple links are having same PP
-                    avg_y = sum([P.y for P in seg.P__])/len(seg.P__)  # y centroid for seg
-
-                    # test for y distance (temporary)
-                    if (_avg_y - avg_y) < ave_splice:
-                        if seg.root in PP_: PP_.remove(seg.root)  # remove merged PP
-                        elif seg.root in spliced_PP_: spliced_PP_.remove(seg.root)
-                        # splice _seg's PP with seg's PP
-                        merge_PP(_PP, seg.root)
-
-            tested_segs += [_seg]  # pack tested _seg
-        _PP.seg_levels[0] = tested_segs
-        spliced_PP_ += [_PP]
-
-    return spliced_PP_
+    return [mplayer,mVal], [dplayer,dVal]  # single new lplayer
 
 
-def merge_PP(_PP, PP, fPd):  # only for PP splicing
+def comp_ptuples(_Ptuples, Ptuples, _fds, fds, derext):  # unpack and compare der layers, if any from der+
 
-    for seg in PP.seg_levels[fPd][-1]:  # merge PP_segs into _PP:
-        accum_PP(_PP, seg, fPd)
-        _PP.seg_levels[fPd][-1] += [seg]
+    mPtuples, dPtuples = [[],0], [[],0]  # [list, val] each
 
-    # merge uplinks and downlinks
-    for uplink in PP.uplink_layers:
-        if uplink not in _PP.uplink_layers:
-            _PP.uplink_layers += [uplink]
-    for downlink in PP.downlink_layers:
-        if downlink not in _PP.downlink_layers:
-            _PP.downlink_layers += [downlink]
+    for _Ptuple, Ptuple, _fd, fd in zip(_Ptuples, Ptuples, _fds, fds):  # bottom-up der+, Ptuples per player, pass-through fds
+        if _fd == fd:
+
+            mtuple, dtuple = comp_ptuple(_Ptuple[0], Ptuple[0])  # init Ptuple = ptuple, [[[[[[]]]]]]
+            mext___, dext___ = [[],0], [[],0]
+            for _ext__, ext__ in zip(_Ptuple[1][0], Ptuple[1][0]):  # ext__: extuple level
+                mext__, dext__ = [[],0], [[],0]
+                for _ext_, ext_ in zip(_ext__[0], ext__[0]):  # ext_: extuple layer
+                    mext_, dext_ = [[],0], [[],0]
+                    for _extuple, extuple in zip(_ext_[0], ext_[0]):  # loop ders from prior comps in each lower ext_
+                        # + der extlayer:
+                        mextuple, dextuple, meval, deval = comp_extuple(_extuple, extuple)
+                        mext_[0] += [mextuple]; mext_[1] += meval
+                        dext_[0] += [dextuple]; dext_[1] += deval
+                    # + der extlevel:
+                    mext__[0] += [mext_]; mext__[1] += mext_[1]
+                    dext__[0] += [dext_]; mext__[1] += dext_[1]
+                # + der inplayer:
+                mext___[0] += [mext__]; mext___[1] += mext__[1]
+                dext___[0] += [dext__]; dext___[1] += dext__[1]
+            # + der Ptuple:
+            mPtuples[0] += [[mtuple, mext___]]; mPtuples[1] += mtuple.val+mext___[1]
+            dPtuples[0] += [[dtuple, dext___]]; dPtuples[1] += dtuple.val+dext___[1]
+        else:
+            break  # comp same fds
+
+    mV = derext[2]; dV = derext[3]  # add der extset to all last elements:
+    mext_[0] += [derext[0]]; mext_[1] += mV; mext__[1] += mV; mext___[1] += mV; mPtuples[1] += mV
+    dext_[0] += [derext[1]]; dext_[1] += dV; dext__[1] += dV; dext___[1] += dV; dPtuples[1] += dV
+
+    return mPtuples, dPtuples
+
+
+def comp_extuple(_extuple, extuple):
+
+    mval, dval = 0,0
+    dextuple, mextuple = [],[]
+
+    for _param, param, ave in zip(_extuple, extuple, (ave_distance, ave_dangle, ave_len, ave_sparsity)):
+        # params: ddistance, dangle, dlen, dsparsity: all derived scalars
+        d = _param-param;          dextuple += [d]; dval += d - ave
+        m = min(_param,param)-ave; mextuple += [m]; mval += m
+
+    return mextuple, dextuple, mval, dval
+
+
+def sum_plevels(pLevels, plevels, Fds, fds):
+
+    for Plevel, plevel, Fd, fd in zip_longest(pLevels, plevels, Fds, fds, fillvalue=[]):  # loop top-down, selective comp depth, same agg+?
+        if Fd==fd:
+            if plevel:
+                if Plevel: sum_plevel(Plevel, plevel)
+                else:      pLevels.append(deepcopy(plevel))
+        else:
+            break
+
+# separate to sum derGs
+def sum_plevel(Plevel, plevel):
+
+    CaForks, lValt = Plevel; caForks, lvalt = plevel  # plevels tree
+
+    for CaFork, caFork in zip_longest(CaForks, caForks, fillvalue=[]):
+        if caFork:
+            if CaFork:
+                Players, Fds, Valt = CaFork; players, fds, valt = caFork
+                Valt[0] += valt[0]; Valt[1] += valt[1]
+                lValt[0] += valt[0]; lValt[1] += valt[1]
+
+                for Player, player in zip_longest(Players, players, fillvalue=[]):
+                    if player:
+                        if Player: sum_player(Player, player, Fds, fds, fneg=0)
+                        else:      Players += [deepcopy(player)]
+            else:
+                CaForks += [deepcopy(caFork)]
+                lvalt[0] += caFork[1][0]; lvalt[1] += caFork[1][1]
+
+# draft
+def sum_player(Player, player, Fds, fds, fneg=0):  # accum layers while same fds
+
+    Caforks, Valt = Player; caforks, valt = player
+    Valt[0] += valt[0]; Valt[1] += valt[1]
+
+    for Cafork, cafork in zip(Caforks, caforks):
+        if Cafork and cafork:
+            pTuples, Val = Cafork
+            ptuples, val = cafork
+            for pTuple, ptuple, Fd, fd in zip_longest(pTuples, ptuples, Fds, fds, fillvalue=[]):
+                if Fd==fd:
+                    if ptuple:
+                        if pTuple:
+                            sum_ptuple(pTuple[0], ptuple[0], fneg=0)
+                            if ptuple[1]: sum_extuples(pTuple[1], ptuple[1])
+                        else:
+                            pTuples += [deepcopy(ptuple)]
+                        Val += val
+                else:
+                    break
+
+# draft
+def sum_extuples(exTuple___, extuple___):
+    for exTuple__, extuple__ in zip_longest(exTuple___[0], extuple___[0], fillvalue=[]):
+        if extuple__:
+            for exTuple_, extuple_ in zip_longest(exTuple__[0], extuple__[0], fillvalue=[]):
+                if extuple_:
+                    for exTuple, extuple in zip_longest(exTuple_[0], extuple_[0], fillvalue=[]):
+                        if extuple:
+                            for i in range(len(exTuple)):  # params: ddistance, dangle, dlen, dsparsity:
+                                exTuple[i] += extuple[i]
+                        else:
+                            exTuple_ += [extuple]
+                else:
+                    exTuple__ += [extuple_]
+        else:
+            exTuple___ += [extuple__]
