@@ -59,8 +59,8 @@ ave_min = 2  # for m defined as min |d|: smaller?
 ave_M = 20  # min M for initial incremental-range comparison(t_), higher cost than der_comp?
 ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
     
-init_y = 501  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 502  # ending row, set 999999999 for arbitrary image
+init_y = 500  # starting row, set 0 for the whole frame, mostly not needed
+halt_y = 501  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -123,7 +123,7 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     add separate rsublayers and dsublayers?
     '''
     range_incr_P_(rootP, P_, rdn, rng)
-    deriv_incr_P_(rootP, P_, rdn, rng)
+    # deriv_incr_P_(rootP, P_, rdn, rng)
     
     if logging == 2:
         if fPd == False:
@@ -143,27 +143,27 @@ def range_incr_P_(rootP, P_, rdn, rng):
 
     comb_sublayers = []
     for P in P_:
-        if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
-            ''' P is Pm   
-            min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
-            '''
-            rdn += 1; rng += 1
-            P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-            sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
-            P.sublayers = [(sub_Pm_, sub_Pd_)]  # 1st layer
-            rdert_ = []
-            _i = P.dert_[0].i
-            for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
-                # skip predictable next dert, local ave? add rdn to higher | stronger layers:
-                d = dert.i - _i
-                rp = dert.p + _i  # intensity accumulated in rng
-                rd = dert.d + d  # difference accumulated in rng
-                rm = ave*rng - abs(rd)  # m accumulated in rng
-                rmrdn = rm < 0
-                rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
-                _i = dert.i
-            sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
-            sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
+        # if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
+        ''' P is Pm   
+        min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
+        '''
+        rdn += 1; rng += 1
+        P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+        sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
+        P.sublayers = [(sub_Pm_, sub_Pd_)]  # 1st layer
+        rdert_ = []
+        _i = P.dert_[0].i
+        for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
+            # skip predictable next dert, local ave? add rdn to higher | stronger layers:
+            d = dert.i - _i
+            rp = dert.p + _i  # intensity accumulated in rng
+            rd = dert.d + d  # difference accumulated in rng
+            rm = ave*rng - abs(rd)  # m accumulated in rng
+            rmrdn = rm < 0
+            rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
+            _i = dert.i
+        sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
+        sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
 
         if rootP and P.sublayers:
             new_comb_sublayers = []
