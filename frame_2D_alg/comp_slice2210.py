@@ -770,4 +770,105 @@ def sum_player(CaTreet, caTreet, Fds, fds, fneg=0):  # accum layers while same f
                     val_lptuples += ptuple.val
                 val_lplayers += val_lptuples
             val_sub += val_lplayers
+        
+        dLx = abs(_G.xn-_G.x0) - abs(G.xn-G.x0); dLy = abs(_G.yn-_G.y0) - abs(G.yn-G.y0)  # dimensions are not meaningful
+        
+        PLe: patt(subs, pLe: plevel ( players ( Ptuples of all lower players, per new agg span?
 '''
+
+graph_ = []
+for G in G_:
+    node_, meds_, valt = G
+    node = node_[0]  # init graph with 1st node:
+    graph = Cgraph(plevels=deepcopy(node.plevels), fds=deepcopy(node.fds), valt=deepcopy(node.valt),
+                   x0=node.x0, xn=node.xn, y0=node.y0, yn=node.yn, node_=node_, meds_=meds_)
+
+    derG = node.link_[0]  # init new_plevel with 1st derG:
+    graph.valt[0] += derG.valt[fd]  # add new level of valt, cis only
+    new_plevel = derG.plevels[fd];
+    derG.roott[fd] = graph
+    for derG in node.link_[1:]:
+        sum_plevel(new_plevel, derG.plevels[fd])  # accum derG in new plevel
+        graph.valt[0] += derG.valt[fd]
+        derG.roott[fd] = graph
+    for node in node_[1:]:
+        if fder:
+            node.plevels[:] = [node.plevels]  # unless done in sub_recursion?
+        graph.x0 = min(graph.x0, node.x0);
+        graph.xn = max(graph.xn, node.xn);
+        graph.y0 = min(graph.y0, node.y0);
+        graph.yn = max(graph.yn, node.yn)
+        # accum params:
+        sum_plevels(graph.plevels, node.plevels, graph.fds, node.fds)  # same for fsub
+        for derG in node.link_:
+            sum_plevel(new_plevel, derG.plevels[fd])  # accum derG, add to graph when complete
+            valt[0] += derG.valt[fd]
+            derG.roott[fd] = graph
+            # link_ = [derG]?
+        for Val, val in zip(graph.valt, node.valt): Val += val
+    graph_ += [graph]
+    graph.plevels += [new_plevel]
+
+
+def comp_ptuples(_Ptuples, Ptuples, _fds, fds, extset):  # unpack and compare der layers, if any from der+
+
+    mPtuples, dPtuples = [],[]; mVAL, dVAL = 0,0
+
+    for _Ptuple, Ptuple, _fd, fd in zip(_Ptuples, Ptuples, _fds, fds):  # bottom-up der+, Ptuples per player, pass-through fds
+        if _fd == fd:
+            mtuple, dtuple = comp_ptuple(_Ptuple[0], Ptuple[0])
+            mext___, dext___ = [],[]; mVAl, dVAl = 0,0
+            _new_extuple = Cptuple(angle=extset[0][0], L=extset[0][1])
+            new_extuple = Cptuple(angle=extset[1][0], L=extset[1][1])
+
+            for _ext__, ext__ in zip(_Ptuple[1]+[[[_new_extuple]]], Ptuple[1]+[[[new_extuple]]]):  # ext__: extuple level
+                mext__, dext__ = [],[]; mVal, dVal = 0,0
+                for _ext_, ext_ in zip(_ext__, ext__):  # ext_: extuple layer
+                    mext_, dext_ = [],[]; mval, dval = 0,0
+
+                    for _extuple, extuple in zip(_ext_, ext_):  # loop ders from prior comps in each lower ext_
+                        mextuple, dextuple = comp_extuple(_extuple, extuple)
+                        mext_ += [mextuple]; dext_ += [dextuple]; mval += mextuple.val; dval += dextuple.val  # add der extlayer
+
+                    mext__ += [mext_]; dext__ += [dext_]; mVal += mval; dVal += dval  # add der extlevel
+                mext___ += [mext__]; dext___ += [dext__]; mVAl += mVal; dVAl += dVal  # add der inplayer
+            mPtuples += [[mtuple, mext___]]; dPtuples += [[dtuple, dext___]]; mVAL += mVAl; dVAL += dVAl  # derPtuple per inPtuple
+        else:
+            break  # comp same fds
+
+    return mPtuples, dPtuples, mVAL, dVAL
+
+def comp_ptuples(_Ptuples, Ptuples, _fds, fds, derext):  # unpack and compare der layers, if any from der+
+
+    mPtuples, dPtuples = [[],0], [[],0]
+
+    for _Ptuple, Ptuple, _fd, fd in zip(_Ptuples, Ptuples, _fds, fds):  # bottom-up der+, Ptuples per player, pass-through fds
+        if _fd == fd:
+            mtuple, dtuple = comp_ptuple(_Ptuple[0], Ptuple[0])
+
+            mext___, dext___ = [],[]; mVAl, dVAl = 0,0
+            for _ext__, ext__ in zip(_Ptuple[1], Ptuple[1]):  # ext__: extuple level
+                mext__, dext__ = [],[]; mVal, dVal = 0,0
+                for _ext_, ext_ in zip(_ext__, ext__):  # ext_: extuple layer
+                    mext_= []; dext_= []; mval=0; dval=0
+
+                    for _extuple, extuple in zip(_ext_, ext_):  # loop ders from prior comps in each lower ext_
+                        mextuple, dextuple = comp_extuple(_extuple, extuple)
+                        # + der extlayer:
+                        mext_ += [mextuple]; mval += mextuple.val
+                        dext_ += [dextuple]; dval += dextuple.val
+                    # + der extlevel:
+                    mext__ += [[mext_+[derext[0]],mval]]; mVal += mval+derext[2]
+                    dext__ += [[dext_+[derext[1]],dval]]; dVal += dval+derext[3]
+                # + der inplayer:
+                mext___ += [[mext__,mVal]]; mVAl += mVal
+                dext___ += [[dext__,dVal]]; dVAl += dVal
+            # + der Ptuple:
+            mPtuples[0] += [[mtuple, [mext___,mVAl]]]; mPtuples[1] += mVAl
+            dPtuples[0] += [[dtuple, [dext___,dVAl]]]; dPtuples[1] += dVAl
+        else:
+            break  # comp same fds
+    # add der extset:
+
+
+    return mPtuples, dPtuples, mVAL, dVAL
