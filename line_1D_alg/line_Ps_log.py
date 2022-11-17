@@ -31,7 +31,7 @@ import csv
 from time import time
 from matplotlib import pyplot as plt
 from itertools import zip_longest
-from frame_2D_alg.class_cluster import ClusterStructure, NoneType
+from frame_2D_alg.class_cluster import ClusterStructure, NoneType, comp_param
 
 class Cdert(ClusterStructure):
     i = int  # input for range_comp only
@@ -51,6 +51,8 @@ class CP(ClusterStructure):
     subset = list  # 1st sublayer' rdn, rng, xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
     # for layer-parallel access and comp, ~ frequency domain, composition: 1st: dert_, 2nd: sub_P_[ dert_], 3rd: sublayers[ sub_P_[ dert_]]:
     sublayers = list  # multiple layers of sub_P_s from d segmentation or extended comp, nested to depth = sub_[n]
+    subDertt_ = list  # m,d' [L,I,D,M] per sublayer, conditionally summed in line_PPs
+    derDertt_ = list  # for subDertt_s compared in line_PPs
 
 verbose = False
 # pattern filters or hyper-parameters: eventually from higher-level feedback, initialized here as constants:
@@ -58,9 +60,11 @@ ave = 15  # |difference| between pixels that coincides with average value of Pm
 ave_min = 2  # for m defined as min |d|: smaller?
 ave_M = 20  # min M for initial incremental-range comparison(t_), higher cost than der_comp?
 ave_D = 5  # min |D| for initial incremental-derivation comparison(d_)
-    
+ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_inc = 1 + 1 / ave_nP # 1.2
+ave_rdm = .5  # obsolete: average dm / m, to project bi_m = m * 1.5
+ave_splice = 50  # to merge a kernel of 3 adjacent Ps
 init_y = 500  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 501  # ending row, set 999999999 for arbitrary image
+halt_y = 502  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -123,19 +127,17 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     add separate rsublayers and dsublayers?
     '''
     range_incr_P_(rootP, P_, rdn, rng)
-    # deriv_incr_P_(rootP, P_, rdn, rng)
-    
-    # if logging == 2:
-    #     if fPd == False:
-    #         logfile_name = "layer2_Pm_log_py.csv"
-    #     else: 
-    #         logfile_name = "layer2_Pd_log_py.csv"
+    deriv_incr_P_(rootP, P_, rdn, rng)
+    if logging == 2:
+        if fPd == False:
+            logfile_name = "layer2_Pm_log_py.csv"
+        else: 
+            logfile_name = "layer2_Pd_log_py.csv"
 
-    #     with open(logfile_name, "a") as csvFile_2:
-    #         write = csv.writer(csvFile_2, delimiter=",")
-    #         for id, val in enumerate(P_):
-    #             # write.writerow(parameter_names)
-    #             write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.subset, val.sublayers])
+        with open(logfile_name, "a") as csvFile_2:
+            write = csv.writer(csvFile_2, delimiter=",")
+            for id, val in enumerate(P_):
+                write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.subset, val.sublayers])
 
     return P_  # used only if not rootP, else packed in rootP.sublayers
 
@@ -144,85 +146,128 @@ def range_incr_P_(rootP, P_, rdn, rng):
 
     comb_sublayers = []
     for P in P_:
-        # if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
-        ''' P is Pm   
-        min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
-        '''
-        rdn += 1; rng += 1
-        P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-        sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
-        P.sublayers = [(sub_Pm_, sub_Pd_)]  # 1st layer
-        rdert_ = []
-        _i = P.dert_[0].i
-        for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
-            # skip predictable next dert, local ave? add rdn to higher | stronger layers:
-            d = dert.i - _i
-            rp = dert.p + _i  # intensity accumulated in rng
-            rd = dert.d + d  # difference accumulated in rng
-            rm = ave*rng - abs(rd)  # m accumulated in rng
-            rmrdn = rm < 0
-            rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
-            _i = dert.i
+        if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
+            ''' P is Pm   
+            min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
+            if local ave:
+            loc_ave = (ave + (P.M - adj_M) / P.L) / 2  # mean ave + P_ave, possibly negative?
+            loc_ave_min = (ave_min + (P.M - adj_M) / P.L) / 2  # if P.M is min?
+            rdert_ = range_comp(P.dert_, loc_ave, loc_ave_min, fid)
+            '''
+            rdn += 1; rng += 1
+            P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+            sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
+            P.sublayers = [(sub_Pm_, sub_Pd_)]  # 1st layer
+            rdert_ = []
+            _i = P.dert_[0].i
+            for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
+                # skip predictable next dert, local ave? add rdn to higher | stronger layers:
+                d = dert.i - _i
+                rp = dert.p + _i  # intensity accumulated in rng
+                rd = dert.d + d  # difference accumulated in rng
+                rm = ave*rng - abs(rd)  # m accumulated in rng
+                rmrdn = rm < 0
+                rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
+                _i = dert.i
 
-        if logging == 3:
-            with open("layer3_log_py.csv", "a") as csvFile_4:
-                write = csv.writer(csvFile_4, delimiter=",")
-                for id, val in enumerate(rdert_):
-                    write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
+                if logging == 3:
+                    with open("layer3_log_py.csv", "a") as csvFile_4:
+                        write = csv.writer(csvFile_4, delimiter=",")
+                        for id, val in enumerate(rdert_):
+                            write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
 
-        sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
-        sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
+            sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
+            sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
 
-        # if rootP and P.sublayers:
-        #     new_comb_sublayers = []
-        #     for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
-        #         comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
-        #         comb_sub_Pd_ += sub_Pd_
-        #         new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
-        #     comb_sublayers = new_comb_sublayers
+        if rootP and P.sublayers:
+            new_comb_sublayers = []
+            for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
+                comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+                comb_sub_Pd_ += sub_Pd_
+                new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+            comb_sublayers = new_comb_sublayers
 
-    # if rootP:
-    #     rootP.sublayers += comb_sublayers  # no return
+    if rootP:
+        rootP.sublayers += comb_sublayers  # no return
 
-# def deriv_incr_P_(rootP, P_, rdn, rng):
+def deriv_incr_P_(rootP, P_, rdn, rng):
 
-#     comb_sublayers = []
-#     for P in P_:
-#         if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
-#             rdn += 1; rng += 1
-#             P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-#             sub_Pm_, sub_Pd_ = [], []
-#             P.sublayers = [(sub_Pm_, sub_Pd_)]
-#             ddert_ = []
-#             _d = abs(P.dert_[0].d)
-#             for dert in P.dert_[1:]:  # all same-sign in Pd
-#                 d = abs(dert.d)  # compare ds
-#                 rd = d + _d
-#                 dd = d - _d
-#                 md = min(d, _d) - abs(dd / 2) - ave_min  # min_match because magnitude of derived vars corresponds to predictive value
-#                 dmrdn = md < 0
-#                 ddert_.append(Cdert(i=dert.d, p=rd, d=dd, m=md, dmrdn=dmrdn))
-#                 _d = d
-#             sub_Pm_[:] = form_P_(P, ddert_, rdn, rng, fPd=False)  # cluster by mm sign
-#             sub_Pd_[:] = form_P_(P, ddert_, rdn, rng, fPd=True)  # cluster by md sign
+    comb_sublayers = []
+    # adj_M_ = form_adjacent_M_(P_)  # compute adjacent Ms to evaluate contrastive borrow potential; but lend is not to adj only, reflected in ave?:
+    # for P, adj_M in zip(P_, adj_M_); rel_adj_M = adj_M / -P.M  # allocate -Pm' adj_M in internal Pds; vs.:
+    for P in P_:
+        if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
+            rdn += 1; rng += 1
+            P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+            sub_Pm_, sub_Pd_ = [], []
+            P.sublayers = [(sub_Pm_, sub_Pd_)]
+            ddert_ = []
+            _d = abs(P.dert_[0].d)
+            for dert in P.dert_[1:]:  # all same-sign in Pd
+                d = abs(dert.d)  # compare ds
+                rd = d + _d
+                dd = d - _d
+                md = min(d, _d) - abs(dd / 2) - ave_min  # min_match because magnitude of derived vars corresponds to predictive value
+                dmrdn = md < 0
+                ddert_.append(Cdert(i=dert.d, p=rd, d=dd, m=md, dmrdn=dmrdn))
+                _d = d
+            sub_Pm_[:] = form_P_(P, ddert_, rdn, rng, fPd=False)  # cluster by mm sign
+            sub_Pd_[:] = form_P_(P, ddert_, rdn, rng, fPd=True)  # cluster by md sign
 
-#         if rootP and P.sublayers:
-#             new_comb_sublayers = []
-#             for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
-#                 comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
-#                 comb_sub_Pd_ += sub_Pd_
-#                 new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
-#             comb_sublayers = new_comb_sublayers
+        if rootP and P.sublayers:
+            new_comb_sublayers = []
+            for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
+                comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+                comb_sub_Pd_ += sub_Pd_
+                new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+            comb_sublayers = new_comb_sublayers
 
-#     if rootP:
-#         rootP.sublayers += comb_sublayers  # no return
+    if rootP:
+        rootP.sublayers += comb_sublayers  # no return
+
+# currently not used:
+def form_adjacent_M_(Pm_):  # compute array of adjacent Ms, for contrastive borrow evaluation
+    '''
+    Value is projected match, while variation has contrast value only: it matters to the extent that it interrupts adjacent match: adj_M.
+    In noise, there is a lot of variation. but no adjacent match to cancel, so that variation has no predictive value.
+    On the other hand, 2D outline or 1D contrast may have low gradient / difference, but it terminates some high-match span.
+    Such contrast is salient to the extent that it can borrow predictive value from adjacent high-match area.
+    adj_M is not affected by primary range_comp per Pm?
+    no comb_m = comb_M / comb_S, if fid: comb_m -= comb_|D| / comb_S: alt rep cost
+    same-sign comp: parallel edges, cross-sign comp: M - (~M/2 * rL) -> contrast as 1D difference?
+    '''
+    M_ = [0] + [Pm.M for Pm in Pm_] + [0]  # list of adj M components in the order of Pm_, + first and last M=0,
+
+    adj_M_ = [ (abs(prev_M) + abs(next_M)) / 2  # mean adjacent Ms
+               for prev_M, next_M in zip(M_[:-2], M_[2:])  # exclude first and last Ms
+             ]
+    ''' expanded:
+    pri_M = Pm_[0].M  # deriv_comp value is borrowed from adjacent opposite-sign Ms
+    M = Pm_[1].M
+    adj_M_ = [abs(Pm_[1].M)]  # initial next_M, also projected as prior for first P
+    for Pm in Pm_[2:]:
+        next_M = Pm.M
+        adj_M_.append((abs(pri_M / 2) + abs(next_M / 2)))  # exclude M
+        pri_M = M
+        M = next_M
+    adj_M_.append(abs(pri_M))  # no / 2: projection for last P
+    '''
+    return adj_M_
 
 
 if __name__ == "__main__":
+    ''' 
+    Parse argument (image)
+    argument_parser = argparse.ArgumentParser()
+    argument_parser.add_argument('-i', '--image', help='path to image file', default='.//raccoon.jpg')
+    arguments = vars(argument_parser.parse_args())
+    # Read image
+    image = cv2.imread(arguments['image'], 0).astype(int)  # load pix-mapped image
+    '''
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 3  # logging of level 1 or level 2 data structuring
+    logging = 0  # logging of level 1 or level 2 data structuring
 
     if logging == 1:
         parameter_names = ["i", "p", "d", "m", "mrdn"]
@@ -255,7 +300,7 @@ if __name__ == "__main__":
     Y, X = image.shape  # Y: frame height, X: frame width
     frame = []
     for y in range(init_y, min(halt_y, Y)):  # y is index of new row pixel_, we only need one row, use init_y=0, halt_y=Y for full frame
-        # print("line",y)
+
         line = line_Ps_root( image[y,:])  # line = [Pm_, Pd_]
         if fline_PPs:
             from line_PPs import line_PPs_root
