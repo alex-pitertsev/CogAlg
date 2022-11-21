@@ -64,7 +64,7 @@ ave_nP = 5  # average number of sub_Ps in P, to estimate intra-costs? ave_rdn_in
 ave_rdm = .5  # obsolete: average dm / m, to project bi_m = m * 1.5
 ave_splice = 50  # to merge a kernel of 3 adjacent Ps
 init_y = 500  # starting row, set 0 for the whole frame, mostly not needed
-halt_y = 502  # ending row, set 999999999 for arbitrary image
+halt_y = 501  # ending row, set 999999999 for arbitrary image
 '''
     Conventions:
     postfix 't' denotes tuple, multiple ts is a nested tuple
@@ -90,16 +90,16 @@ def line_Ps_root(pixel_):  # Ps: patterns, converts frame_of_pixels to frame_of_
         _i = i
 
     if logging == 1:
-        with open("layer1_log_py.csv", "a") as csvFile_1:
+        with open("./julia/layer1_log_py.csv", "a") as csvFile_1:
             write = csv.writer(csvFile_1, delimiter=",")
             for id, val in enumerate(dert_):
                 write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
 
     # form patterns, evaluate them for rng+ and der+ sub-recursion of cross_comp:
-    Pm_ = form_P_(None, dert_, rdn=1, rng=1, fPd=False)  # rootP=None, eval intra_P_ (calls form_P_)
-    Pd_ = form_P_(None, dert_, rdn=1, rng=1, fPd=True)
+    # Pm_ = form_P_(None, dert_, rdn=1, rng=1, fPd=False)  # rootP=None, eval intra_P_ (calls form_P_)
+    # Pd_ = form_P_(None, dert_, rdn=1, rng=1, fPd=True)
 
-    return [Pm_, Pd_]  # input to 2nd level
+    # return [Pm_, Pd_]  # input to 2nd level
 
 
 def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn and rng are pass-through to rng+ and der+
@@ -130,9 +130,9 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     deriv_incr_P_(rootP, P_, rdn, rng)
     if logging == 2:
         if fPd == False:
-            logfile_name = "layer2_Pm_log_py.csv"
+            logfile_name = "./julia/layer2_Pm_log_py.csv"
         else: 
-            logfile_name = "layer2_Pd_log_py.csv"
+            logfile_name = "./julia/layer2_Pd_log_py.csv"
 
         with open(logfile_name, "a") as csvFile_2:
             write = csv.writer(csvFile_2, delimiter=",")
@@ -171,7 +171,7 @@ def range_incr_P_(rootP, P_, rdn, rng):
                 _i = dert.i
 
                 if logging == 3:
-                    with open("layer3_log_py.csv", "a") as csvFile_4:
+                    with open("./julia/layer3_log_py.csv", "a") as csvFile_4:
                         write = csv.writer(csvFile_4, delimiter=",")
                         for id, val in enumerate(rdert_):
                             write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
@@ -267,41 +267,45 @@ if __name__ == "__main__":
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 0  # logging of level 1 or level 2 data structuring
+    logging = 1  # logging of level 1 or level 2 data structuring
 
     if logging == 1:
         parameter_names = ["i", "p", "d", "m", "mrdn"]
-        with open("layer1_log_py.csv", "w") as csvFile_1:
+        with open("./julia/layer1_log_py.csv", "w") as csvFile_1:
             write = csv.writer(csvFile_1, delimiter=",")
             write.writerow(parameter_names)
 
     if logging == 2:
         parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_","subset", "sublayers"]
         # Clear previous log files
-        with open("layer2_Pd_log_py.csv", "w") as csvFile_2:
+        with open("./julia/layer2_Pd_log_py.csv", "w") as csvFile_2:
             write = csv.writer(csvFile_2, delimiter=",")
             write.writerow(parameter_names)
-        with open("layer2_Pm_log_py.csv", "w") as csvFile_3:
+        with open("./julia/layer2_Pm_log_py.csv", "w") as csvFile_3:
             write = csv.writer(csvFile_3, delimiter=",")
             write.writerow(parameter_names)
 
     if logging == 3:
         parameter_names = ["i", "p", "d", "m", "mrdn"]
-        with open("layer3_log_py.csv", "w") as csvFile_4:
+        with open("./julia/layer3_log_py.csv", "w") as csvFile_4:
             write = csv.writer(csvFile_4, delimiter=",")
             write.writerow(parameter_names)
 
 
     start_time = time()
-    image = cv2.imread('.//raccoon.jpg', 0).astype(int)  # manual load pix-mapped image
+    # image = cv2.imread('./raccoon.jpg', 0).astype(int)  # manual load pix-mapped image
+    image = cv2.imread('./raccoon_gray.jpg', 0).astype(int)  # manual load pix-mapped image
     assert image is not None, "No image in the path"
 
     # Main
     Y, X = image.shape  # Y: frame height, X: frame width
     frame = []
     for y in range(init_y, min(halt_y, Y)):  # y is index of new row pixel_, we only need one row, use init_y=0, halt_y=Y for full frame
-
-        line = line_Ps_root( image[y,:])  # line = [Pm_, Pd_]
+        # with open("./julia/500th_line_log_py.csv", "a") as csvFile_0:
+        #     write = csv.writer(csvFile_0, delimiter=",")
+        #     for id, val in enumerate(image[y,:]):
+        #         write.writerow([val])
+        line = line_Ps_root(image[y,:])  # line = [Pm_, Pd_]
         if fline_PPs:
             from line_PPs import line_PPs_root
             line = line_PPs_root([line])  # line = CPp, sublayers[0] is a flat 16-tuple of P_s,

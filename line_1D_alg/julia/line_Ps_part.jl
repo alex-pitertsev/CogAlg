@@ -194,7 +194,7 @@ end
 render = 0
 fline_PPs = 0
 frecursive = 0
-logging = 3  # logging of local functions variables
+logging = 1  # logging of local functions variables
 
 if logging == 2
     parameter_names = ["L" "I" "D" "M" "Rdn" "x0" "dert_" "subset" "sublayers"]  # Vector
