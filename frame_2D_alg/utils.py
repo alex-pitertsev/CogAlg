@@ -1,11 +1,25 @@
 from itertools import (repeat, accumulate, chain, starmap, tee)
+from types import SimpleNamespace
+
 import numbers
 import numpy as np
-
-import cv2
+import matplotlib.pyplot as plt
 
 # ----------------------------------------------------------------------------
 # Constants
+
+# kernel slices
+kernel_slice_3x3 = SimpleNamespace(
+    tl=(Ellipsis, slice(0, -2), slice(None, -2)),
+    tc=(Ellipsis, slice(0, -2), slice(1, -1)),
+    tr=(Ellipsis, slice(0, -2), slice(2, None)),
+    ml=(Ellipsis, slice(1, -1), slice(None, -2)),
+    mc=(Ellipsis, slice(1, -1), slice(1, -1)),
+    mr=(Ellipsis, slice(1, -1), slice(2, None)),
+    bl=(Ellipsis, slice(2, None), slice(None, -2)),
+    bc=(Ellipsis, slice(2, None), slice(1, -1)),
+    br=(Ellipsis, slice(2, None), slice(2, None)),
+)
 
 # colors
 WHITE = 255
@@ -31,29 +45,21 @@ SIGN_MAPS = {
 # ----------------------------------------------------------------------------
 # General purpose functions
 
-
-
 def generate_sobel(shape, axis):
     """
     shape must be odd: eg. (5,5)
     axis is the direction, with 0 to positive x and 1 to positive y
-
     example usage:
     y_3x3 = generate_sobel((3,3),1)
     x_3x3 = generate_sobel((3,3),0)
-
     y_5x5 = generate_sobel((5,5),1)
     x_5x5 = generate_sobel((5,5),0)
-
     y_7x7 = generate_sobel((7,7),1)
     x_7x7 = generate_sobel((7,7),0)
-
     y_9x9 = generate_sobel((9,9),1)
     x_9x9 = generate_sobel((9,9),0)
-
     y_17x17 = generate_sobel((17,17),1)
     x_17x17 = generate_sobel((17,17),0)
-
     """
     k = np.zeros(shape)
     p = [(j,i) for j in range(shape[0])
@@ -131,7 +137,7 @@ def array2image(a):
 def imread(filename, raise_if_not_read=True):
     "Read an image in grayscale, return array."
     try:
-        return cv2.imread(filename, 0).astype(float)
+        return np.mean(plt.imread(filename), axis=2).astype(float)
     except AttributeError:
         if raise_if_not_read:
             raise SystemError('image is not read')
@@ -142,7 +148,7 @@ def imread(filename, raise_if_not_read=True):
 
 def imwrite(filename, img):
     "Write image with cv2.imwrite."
-    cv2.imwrite(filename, img)
+    plt.imwrite(filename, img)
 
 # ----------------------------------------------------------------------------
 # Blob slicing
@@ -239,7 +245,7 @@ def map_frame_binary(frame, *args, **kwargs):
     for i, blob in enumerate(frame['blob__']):
         blob_map = draw_blob(blob, *args, **kwargs)
 
-        over_draw(image, blob_map, blob.box, box)
+        paint_over(image, blob_map, blob.box, box)
 
     return image
 
@@ -266,7 +272,7 @@ def map_frame(frame, *args, **kwargs):
     for i, blob in enumerate(frame['blob__']):
         blob_map = draw_blob(blob, *args, **kwargs)
 
-        over_draw(image, blob_map, blob.box, box)
+        paint_over(image, blob_map, blob.box, box)
 
     return image
 
@@ -281,7 +287,7 @@ def draw_blob(blob, *args, blob_box=None, **kwargs):
         sub_box = stack_box(stack)
         stack_map = draw_stack(stack, sub_box, blob.sign,
                                *args, **kwargs)
-        over_draw(blob_img, stack_map, sub_box, blob_box)
+        paint_over(blob_img, stack_map, sub_box, blob_box)
     return blob_img
 
 
@@ -321,25 +327,25 @@ def debug_stack(background_shape, *stacks):
     image = blank_image(background_shape)
     for stack in stacks:
         sb = stack_box(stack)
-        over_draw(image,
-                  draw_stack(stack, sb, stack.sign),
-                  sb)
+        paint_over(image,
+                   draw_stack(stack, sb, stack.sign),
+                   sb)
     return image
 
 
 def debug_blob(background_shape, *blobs):
     image = blank_image(background_shape)
     for blob in blobs:
-        over_draw(image,
-                  draw_blob(blob),
-                  blob.box)
+        paint_over(image,
+                   draw_blob(blob),
+                   blob.box)
     return image
 
 
-def over_draw(map, sub_map, sub_box,
-              box=None, mask=None, mv=masking_val,
-              fill_color=None):
-    '''Over-write map of sub-structure onto map of parent-structure.'''
+def paint_over(map, sub_map, sub_box,
+               box=None, mask=None, mv=masking_val,
+               fill_color=None):
+    '''Paint the map of a sub-structure onto that of parent-structure.'''
 
     if  box is None:
         y0, yn, x0, xn = sub_box
@@ -370,6 +376,3 @@ def blank_image(shape, fill_val=None):
     if fill_val is None:
         fill_val = masking_val
     return np.full((height, width, 3), fill_val, 'uint8')
-
-# ---------------------------------------------------------------------
-# ----------------------------------------------------------------------------

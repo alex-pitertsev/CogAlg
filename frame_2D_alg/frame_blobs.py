@@ -13,9 +13,9 @@
     Main functions:
     - comp_pixel:
     Comparison between diagonal pixels in 2x2 kernels of image forms derts: tuples of pixel + derivatives per kernel.
-    The output is dert__: 2D array of pixel-mapped derts.
+    The output is der__t: 2D array of pixel-mapped derts.
     - frame_blobs_root:
-    Flood-fill segmentation of image dert__ into blobs: contiguous areas of positive | negative deviation of gradient per kernel.
+    Flood-fill segmentation of image der__t into blobs: contiguous areas of positive | negative deviation of gradient per kernel.
     Each blob is parameterized with summed params of constituent derts, derived by pixel cross-comparison (cross-correlation).
     These params represent predictive value per pixel, so they are also predictive on a blob level,
     thus should be cross-compared between blobs on the next level of search.
@@ -30,12 +30,14 @@
 '''
 
 import sys
+from typing import Union
+
 import numpy as np
+from time import time
 from collections import deque, namedtuple
-from itertools import zip_longest
-from draw_frame_blobs import visualize_blobs
-from class_cluster import ClusterStructure
-# from frame_blobs_wrapper import wrapped_flood_fill, from utils import minmax, from time import time
+from visualization.draw_frame_blobs import visualize_blobs
+from class_cluster import ClusterStructure, init_param as z
+from utils import kernel_slice_3x3 as ks    # use in comp_pixel
 
 # hyper-parameters, set as a guess, latter adjusted by feedback:
 ave = 30  # base filter, directly used for comp_r fork
@@ -45,51 +47,52 @@ aveBa = 1.5
 ave_mP = 100
 UNFILLED = -1
 EXCLUDED_ID = -2
-# FrameOfBlobs = namedtuple('FrameOfBlobs', 'I, Dy, Dx, M, blob_, dert__')
+# FrameOfBlobs = namedtuple('FrameOfBlobs', 'I, Dy, Dx, M, blob_, der__t')
+idert = namedtuple('idert', 'i, dy, d, g, ri')
+adert = namedtuple('adert', 'i, g, ga, ri, dy, dx, dyy, dyx, dxy, dxx')
 
 class CBlob(ClusterStructure):
     # comp_pixel:
-    I = float
-    Dy = float
-    Dx = float
-    G = float
-    A = float  # blob area
-    sign = bool
+    sign : bool = None
+    I : float = 0.0
+    Dy : float = 0.0
+    Dx : float = 0.0
+    G : float = 0.0
+    A : float = 0.0 # blob area
     # composite params:
-    M = float  # summed PP.M, for both types of recursion?
-    box = list  # x0, xn, y0, yn
-    mask__ = object
-    dert__ = object
-    root_dert__ = object
-    adj_blobs = list
-    fopen = bool
+    M : float = 0.0 # summed PP.M, for both types of recursion?
+    box : tuple = (0,0,0,0)  # y0, yn, x0, xn
+    mask__ : object = None
+    der__t : Union[idert, adert] = None
+    der__t_roots : object = None  # map to der__t
+    adj_blobs : list = z([])  # adjacent blobs
+    fopen : bool = False
     # intra_blob params: # or pack in intra = lambda: Cintra
     # comp_angle:
-    Sin_da0 = float
-    Cos_da0 = float
-    Sin_da1 = float
-    Cos_da1 = float
-    Ga = float
+    Dyy : float = 0.0
+    Dyx : float = 0.0
+    Dxy : float = 0.0
+    Dxx : float = 0.0
+    Ga : float = 0.0
     # comp_dx:
-    Mdx = float
-    Ddx = float
+    Mdx : float = 0.0
+    Ddx : float = 0.0
     # derivation hierarchy:
-    prior_forks = list
-    fBa = bool  # in root_blob: next fork is comp angle, else comp_r
-    rdn = lambda: 1.0  # redundancy to higher blob layers, or combined?
-    rng = int  # comp range, set before intra_comp
-    P__ = list  # input + derPs, common root for downward layers and upward PP_s:
-    rlayers = list  # list of layers across sub_blob derivation tree, deeper layers are nested with both forks
-    dlayers = list  # separate for range and angle forks per blob
-    PPm_ = list
-    PPd_ = list
-    valt = list  # PPm_ val, PPd_ val, += M,G?
-    # comp_slice:
-    dir_blobs = list  # primarily vertically | laterally oriented edge blob segments, formed in segment_by_direction
-    fsliced = bool
-    fflip = bool  # x-y swap in comp_slice
-    # frame_bblob:
-    root = object  # bblob or blob to dir_blob
+    root_der__t : list = z([])  # from root blob, to extend der__t
+    prior_forks : str = ''
+    fBa : bool = False  # in root_blob: next fork is comp angle, else comp_r
+    rdn : float = 1.0  # redundancy to higher blob layers, or combined?
+    rng : int = 1  # comp range, set before intra_comp
+    P_ : list = z([])  # input + derPs, no internal sub-recursion
+    rlayers : list = z([])  # list of layers across sub_blob derivation tree, deeper layers are nested with both forks
+    dlayers : list = z([])  # separate for range and angle forks per blob
+    PPm_ : list = z([])  # mblobs in frame
+    PPd_ : list = z([])  # dblobs in frame
+    valt : list = z([])  # PPm_ val, PPd_ val, += M,G?
+    fsliced : bool = False  # from comp_slice
+    root : object = None  # frame or from frame_bblob
+    mgraph : object = None  # reference to converted blob
+    dgraph : object = None  # reference to converted blob
 
 '''
     Conventions:
@@ -105,31 +108,57 @@ class CBlob(ClusterStructure):
 def frame_blobs_root(image, intra=False, render=False, verbose=False, use_c=False):
 
     if verbose: start_time = time()
-    dert__ = comp_pixel(image)
-
-    blob_, idmap, adj_pairs = flood_fill(dert__, sign__= ave-dert__[3] > 0, verbose=verbose)  # dert__[3] is g, https://en.wikipedia.org/wiki/Flood_fill
+    Y, X = image.shape[:2]
+    der__t = comp_pixel(image)
+    sign__ = ave - der__t[3] > 0   # sign is positive for below-average g in [i__, dy__, dx__, g__, ri]
+    # https://en.wikipedia.org/wiki/Flood_fill:
+    blob_, idmap, adj_pairs = flood_fill(der__t, sign__, prior_forks='', verbose=verbose)
     assign_adjacents(adj_pairs)  # forms adj_blobs per blob in adj_pairs
     I, Dy, Dx = 0, 0, 0
     for blob in blob_: I += blob.I; Dy += blob.Dy; Dx += blob.Dx
-    frame = CBlob(I = I, Dy = Dy, Dx = Dx, dert__=dert__, prior_forks=["g"], rlayers = [blob_])  # dlayers = []: no comp_a yet
 
+    frame = CBlob(I=I, Dy=Dy, Dx=Dx, der__t=der__t, rlayers=[blob_], box=(0,Y,0,X))
+    # dlayers = []: no comp_a yet
     if verbose: print(f"{len(frame.rlayers[0])} blobs formed in {time() - start_time} seconds")
-    if render: visualize_blobs(idmap, frame.rlayers[0])
 
     if intra:  # omit for testing frame_blobs without intra_blob
         if verbose: print("\rRunning frame's intra_blob...")
         from intra_blob import intra_blob_root
 
         frame.rlayers += intra_blob_root(frame, render, verbose, fBa=0)  # recursive eval cross-comp range| angle| slice per blob
+        if verbose: print("\rFinished intra_blob")  # print_deep_blob_forking(deep_blobs)
         # sublayers[0] is fork-specific, deeper sublayers combine sub-blobs of both forks
     '''
     if use_c:  # old version, no longer updated:
-        dert__ = dert__[0], np.empty(0), np.empty(0), *dert__[1:], np.empty(0)
-        frame, idmap, adj_pairs = wrapped_flood_fill(dert__)
+        der__t = der__t[0], np.empty(0), np.empty(0), *der__t[1:], np.empty(0)
+        frame, idmap, adj_pairs = wrapped_flood_fill(der__t)
     '''
+    if render: visualize_blobs(frame)
     return frame
 
-def comp_pixel(image):  # 2x2 pixel cross-correlation within image, see comp_pixel_versions file for other versions and more explanation
+def comp_pixel(image):
+
+    pi__ = np.pad(image, pad_width=1, mode='edge')  # pad image with edge values
+    # compute directional derivatives:
+    dy__ = (
+        (pi__[ks.bl] - pi__[ks.tl]) * 0.25 +            # left column
+        (pi__[ks.bc] - pi__[ks.tc]) * 0.50 +            # middle column
+        (pi__[ks.br] - pi__[ks.tr]) * 0.25              # right column
+    )
+    dx__ = (
+        (pi__[ks.tr] - pi__[ks.tl]) * 0.25 +            # top row
+        (pi__[ks.mr] - pi__[ks.mc]) * 0.50 *            # middle row
+        (pi__[ks.br] - pi__[ks.bl]) * 0.25              # bottom row
+    )
+    G__ = np.hypot(dy__, dx__)                          # compute gradient magnitude
+    rp__ = (                                            # mean of 3x3 kernel
+        pi__[ks.tl] + pi__[ks.tc] + pi__[ks.tr] +       # top row
+        pi__[ks.ml] + pi__[ks.mc] + pi__[ks.mr] +       # middle row
+        pi__[ks.bl] + pi__[ks.bc] + pi__[ks.br]         # bottom row
+    ) / 9
+    return idert(pi__[ks.mc], dy__, dx__, G__, rp__)
+
+def comp_pixel_2x2(image):  # 2x2 pixel cross-correlation within image, see comp_pixel_versions file for other versions and more explanation
 
     # input slices into sliding 2x2 kernel, each slice is a shifted 2D frame of grey-scale pixels:
     topleft__ = image[:-1, :-1]
@@ -140,27 +169,32 @@ def comp_pixel(image):  # 2x2 pixel cross-correlation within image, see comp_pix
     d_upright__ = bottomleft__ - topright__
     d_upleft__ = bottomright__ - topleft__
 
+    # rotate back to 0 deg:
+    dy__ = 0.5 * (d_upleft__ + d_upright__)
+    dx__ = 0.5 * (d_upleft__ - d_upright__)
+
     G__ = np.hypot(d_upright__, d_upleft__)  # 2x2 kernel gradient (variation), match = inverse deviation, for sign_ only
     rp__ = topleft__ + topright__ + bottomleft__ + bottomright__  # sum of 4 rim pixels -> mean, not summed in blob param
 
-    return (topleft__, d_upleft__, d_upright__, G__, rp__)  # tuple of 2D arrays per param of dert (derivatives' tuple)
-    # renamed dert__ = (i__, dy__, dx__, g__, ri__) for readability in deeper functions
+    return (topleft__, dy__, dx__, G__, rp__)  # tuple of 2D arrays per param of dert (derivatives' tuple)
+    # renamed der__t = (i__, dy__, dx__, g__, ri__) for readability in deeper functions
 '''
     old version:
     Gy__ = ((bottomleft__ + bottomright__) - (topleft__ + topright__))  # decomposition of two diagonal differences into Gy
     Gx__ = ((topright__ + bottomright__) - (topleft__ + bottomleft__))  # decomposition of two diagonal differences into Gx
 '''
 
-def flood_fill(dert__, sign__, verbose=False, mask__=None, fseg=False, prior_forks=[]):
+def flood_fill(der__t, sign__, prior_forks, verbose=False, mask__=None, fseg=False):
 
-    if mask__ is None: height, width = dert__[0].shape  # init dert__
-    else:              height, width = mask__.shape  # intra dert__
+    if mask__ is None: height, width = der__t[0].shape  # init der__t
+    else:              height, width = mask__.shape  # intra der__t
 
     idmap = np.full((height, width), UNFILLED, 'int64')  # blob's id per dert, initialized UNFILLED
     if mask__ is not None:
         idmap[mask__] = EXCLUDED_ID
     if verbose:
-        step = 100 / height / width  # progress % percent per pixel
+        n_masked = 0 if mask__ is None else mask__.sum()
+        step = 100 / (height * width - n_masked)  # progress % percent per pixel
         progress = 0.0; print(f"\rClustering... {round(progress)} %", end="");  sys.stdout.flush()
     blob_ = []
     adj_pairs = set()
@@ -169,10 +203,8 @@ def flood_fill(dert__, sign__, verbose=False, mask__=None, fseg=False, prior_for
         for x in range(width):
             if idmap[y, x] == UNFILLED:  # ignore filled/clustered derts
 
-                blob = CBlob(sign=sign__[y, x], root_dert__=dert__, prior_forks=['g'])
-                if prior_forks: # update prior forks in deep blob
-                    blob.prior_forks= prior_forks.copy()
-                blob_.append(blob)
+                blob = CBlob(sign=sign__[y, x], root_der__t=der__t, prior_forks=prior_forks)
+                blob_ += [blob]
                 idmap[y, x] = blob.id
                 y0, yn = y, y
                 x0, xn = x, x
@@ -182,18 +214,18 @@ def flood_fill(dert__, sign__, verbose=False, mask__=None, fseg=False, prior_for
                     y1, x1 = unfilled_derts.popleft()
 
                     # add dert to blob
-                    if len(dert__) > 5: # comp_angle
-                        blob.accumulate(I  = dert__[3][y1][x1],  # rp__,
-                                        Dy = dert__[4][y1][x1],
-                                        Dx = dert__[5][y1][x1],
-                                        Sin_da0 = dert__[6][y1][x1],
-                                        Cos_da0 = dert__[7][y1][x1],
-                                        Sin_da1 = dert__[8][y1][x1],
-                                        Cos_da1 = dert__[9][y1][x1])
+                    if len(der__t) > 5: # comp_angle
+                        blob.accumulate(I  = der__t[3][y1][x1],  # rp__,
+                                        Dy = der__t[4][y1][x1],
+                                        Dx = der__t[5][y1][x1],
+                                        Dyy = der__t[6][y1][x1],
+                                        Dyx = der__t[7][y1][x1],
+                                        Dxy = der__t[8][y1][x1],
+                                        Dxx = der__t[9][y1][x1])
                     else:  # comp_pixel or comp_range
-                        blob.accumulate(I  = dert__[4][y1][x1],  # rp__,
-                                        Dy = dert__[1][y1][x1],
-                                        Dx = dert__[2][y1][x1])
+                        blob.accumulate(I  = der__t[4][y1][x1],  # rp__,
+                                        Dy = der__t[1][y1][x1],
+                                        Dx = der__t[2][y1][x1])
                     blob.A += 1
                     if y1 < y0:   y0 = y1
                     elif y1 > yn: yn = y1
@@ -220,24 +252,38 @@ def flood_fill(dert__, sign__, verbose=False, mask__=None, fseg=False, prior_for
                             # same-sign dert:
                             if blob.sign == sign__[y2, x2]:
                                 idmap[y2, x2] = blob.id  # add blob ID to each dert
-                                unfilled_derts.append((y2, x2))
+                                unfilled_derts += [(y2, x2)]
                         # else check if same-signed
                         elif blob.sign != sign__[y2, x2]:
                             adj_pairs.add((idmap[y2, x2], blob.id))  # blob.id always increases
                 # terminate blob
                 yn += 1; xn += 1
                 blob.box = y0, yn, x0, xn
-                blob.dert__ = tuple([param_dert__[y0:yn, x0:xn] for param_dert__ in blob.root_dert__])  # add None__ for m__?
+                blob.der__t = type(der__t)(
+                    *(par__[y0:yn, x0:xn] for par__ in der__t))
                 blob.mask__ = (idmap[y0:yn, x0:xn] != blob.id)
                 blob.adj_blobs = [[],[]] # iblob.adj_blobs[0] = adj blobs, blob.adj_blobs[1] = poses
-                blob.G = np.hypot(blob.Dy, blob.Dx)  # recompute G
-                if len(dert__) > 5:  # recompute Ga
-                    blob.Ga = (blob.Cos_da0 + 1) + (blob.Cos_da1 + 1)  # +1 for all positives
+                blob.G = recompute_dert(blob.Dy, blob.Dx)
+                if len(der__t) > 5:
+                    blob.Ga, blob.Dyy, blob.Dyx, blob.Dxy, blob.Dxx = recompute_adert(blob.Dyy, blob.Dyx, blob.Dxy, blob.Dxx)
                 if verbose:
                     progress += blob.A * step; print(f"\rClustering... {round(progress)} %", end=""); sys.stdout.flush()
-    if verbose: print("")
+    if verbose: print("\r" + " " * 79, end=""); sys.stdout.flush(); print("\r", end="")
 
     return blob_, idmap, adj_pairs
+
+
+def recompute_dert(Dy, Dx):   # recompute params after accumulation
+    return np.hypot(Dy, Dx)  # recompute G from Dy, Dx
+
+
+def recompute_adert(Dyy, Dyx, Dxy, Dxx):  # recompute angle fork params after accumulation
+    # normalize
+    Dyy, Dyx = [Dyy, Dyx] / np.hypot(Dyy, Dyx)
+    Dxy, Dxx = [Dxy, Dxx] / np.hypot(Dxy, Dxx)
+    # recompute Ga
+    Ga = (1 - Dyx) + (1 - Dxx)  # +1 for all positives
+    return Ga, Dyy, Dyx, Dxy, Dxx
 
 
 def assign_adjacents(adj_pairs):  # adjacents are connected opposite-sign blobs
@@ -265,26 +311,25 @@ def assign_adjacents(adj_pairs):  # adjacents are connected opposite-sign blobs
         # bilateral assignments
         '''
         if f_segment_by_direction:  # pose is not needed
-            blob1.adj_blobs.append(blob2)
-            blob2.adj_blobs.append(blob1)
+            blob1.adj_blobs += [blob2]
+            blob2.adj_blobs += [blob1]
         '''
-        blob1.adj_blobs[0].append(blob2)
-        blob1.adj_blobs[1].append(pose2)
-        blob2.adj_blobs[0].append(blob1)
-        blob2.adj_blobs[1].append(pose1)
+        blob1.adj_blobs[0] += [blob2]
+        blob1.adj_blobs[1] += [pose2]
+        blob2.adj_blobs[0] += [blob1]
+        blob2.adj_blobs[1] += [pose1]
 
 
 if __name__ == "__main__":
     import argparse
-    from time import time
     from utils import imread
     # Parse arguments
     argument_parser = argparse.ArgumentParser()
-    argument_parser.add_argument('-i', '--image', help='path to image file', default='./images//toucan.jpg')
+    argument_parser.add_argument('-i', '--image', help='path to image file', default='./images//toucan_small.jpg')
     argument_parser.add_argument('-v', '--verbose', help='print details, useful for debugging', type=int, default=1)
     argument_parser.add_argument('-r', '--render', help='render the process', type=int, default=0)
     argument_parser.add_argument('-c', '--clib', help='use C shared library', type=int, default=0)
-    argument_parser.add_argument('-n', '--intra', help='run intra_blobs after frame_blobs', type=int, default=0)
+    argument_parser.add_argument('-n', '--intra', help='run intra_blobs after frame_blobs', type=int, default=1)
     argument_parser.add_argument('-e', '--extra', help='run frame_recursive after frame_blobs', type=int, default=0)
     args = argument_parser.parse_args()
     image = imread(args.image)
@@ -311,7 +356,7 @@ if __name__ == "__main__":
         for i, blob in enumerate(frame.blob_):
         # check if fopen is correct
             # if fopen, y0 = 0, or x0 = 0, or yn = frame's y size or xn = frame's x size
-            if blob.box[0] == 0 or blob.box[2] == 0 or blob.box[1] == blob.root_dert__[0].shape[0] or blob.box[3] == blob.root_dert__[0].shape[1]:
+            if blob.box[0] == 0 or blob.box[2] == 0 or blob.box[1] == blob.root_der__t[0].shape[0] or blob.box[3] == blob.root_der__t[0].shape[1]:
                 if not blob.fopen: # fopen should be true when blob touches the frame boundaries
                     print('fopen is wrong on blob '+str(i))
     '''
