@@ -12,6 +12,8 @@ differences in interfaces are mostly eliminated.
 import weakref
 from numbers import Number
 from inspect import isclass
+import numpy as np
+from copy import deepcopy
 
 NoneType = type(None)
 
@@ -52,8 +54,10 @@ class MetaCluster(type):
         replace = attrs.get('replace', {})
 
         # inherit params
+        new_bases = []
         for base in bases:
             if issubclass(base, ClusterStructure):
+                new_bases.append(base)
                 for param in base.numeric_params:
                     if param not in attrs:  # prevents duplication of base params
                         # not all inherited params are Cdm
@@ -63,18 +67,30 @@ class MetaCluster(type):
                                 attrs[new_param] = new_type
                         else:
                             attrs[param] = getattr(base,param+'_type') # if the param is not replaced, it will following type of base param
+            else:
+                print(f"Warning: {base} is not a subclass of {ClusterStructure}")
+
+        bases = tuple(new_bases)   # remove
+
+        if len(bases)>1:
+            bases=(bases[0],)
 
         # only ignore param names start with double underscore
         params = tuple(attr for attr in attrs
                        if not attr.startswith('__') and
-                       isclass(attrs[attr]))
+                       isclass(attrs[attr]) or
+                       (callable(attrs[attr]) and
+                        attrs[attr].__code__.co_argcount == 0))
 
         numeric_params = tuple(param for param in params
-                               if (issubclass(attrs[param], Number)) and
-                               not (issubclass(attrs[param], bool))) # avoid accumulate bool, which is flag
-
+                               if (isinstance(attrs[param](), Number)) and
+                               not (isinstance(attrs[param](), bool)))  # don't accumulate flags
         list_params = tuple(param for param in params
-                               if (issubclass(attrs[param], list)))
+                            if (isinstance(attrs[param](), list)))
+        tuple_params = tuple(param for param in params
+                            if (isinstance(attrs[param](), tuple)))
+        dict_params = tuple(param for param in params
+                            if (isinstance(attrs[param](), dict)))
 
         # Fill in the template
         methods_definitions = _methods_template.format(
@@ -86,6 +102,10 @@ class MetaCluster(type):
                                          for param in numeric_params),
             list_param_vals=', '.join(f'self.{param}'
                                          for param in list_params),
+            tuple_param_vals=', '.join(f'self.{param}'
+                                         for param in tuple_params),
+            dict_param_vals=', '.join(f'self.{param}'
+                                         for param in dict_params),
             pack_args=', '.join(param for param in ('', *params)),
             pack_assignments='; '.join(f'self.{param} = {param}'
                                   for param in params)
@@ -112,6 +132,8 @@ class MetaCluster(type):
         # attrs['params'] = params
         attrs['numeric_params'] = numeric_params
         attrs['list_params'] = list_params
+        attrs['tuple_params'] = tuple_params
+        attrs['dict_params'] = dict_params
 
         # Add fields/params and other instance attributes
         attrs['__slots__'] = (('_id', 'hid', *params, '__weakref__')
@@ -137,13 +159,28 @@ class MetaCluster(type):
 
         # set inherited params
         if kwargs.get('inherit') is not None:
+
+            excluded = []
+            if kwargs.get('excluded') is not None:
+                excluded = kwargs.get('excluded')
+
             for inherit_instance in kwargs.get('inherit'):
                 for param in cls.numeric_params: # inherit numeric params
-                    if hasattr(inherit_instance,param):
+                    if hasattr(inherit_instance,param) and (param not in excluded):
                         setattr(instance, param, getattr(inherit_instance, param))
 
                 for param in cls.list_params: # inherit list params
-                    if hasattr(inherit_instance,param):
+                    if hasattr(inherit_instance,param) and (param not in excluded):
+                        list_param = getattr(inherit_instance, param)
+                        if len(list_param)>0: # not empty list
+                            setattr(instance, param, list_param )
+
+                for param in cls.dict_params: # inherit dict params
+                    if hasattr(inherit_instance,param) and (param not in excluded):
+                        setattr(instance, param, getattr(inherit_instance, param))
+
+                for param in cls.dict_params: # inherit dict params
+                    if hasattr(inherit_instance,param) and (param not in excluded):
                         setattr(instance, param, getattr(inherit_instance, param))
 
         # Set id
@@ -175,6 +212,8 @@ class MetaCluster(type):
     '''
 
     def get_instance(cls, cluster_id):
+        if cluster_id < 0:
+            return None
         try:
             return cls._instances[cluster_id]()
         except IndexError:
@@ -236,102 +275,174 @@ class ClusterStructure(metaclass=MetaCluster):
     def __init__(self, **kwargs):
         pass
 
-    def accum_from(self, other, excluded=()):
+    def accum_from(self, other, excluded=(), ignore_capital=False):
         """Accumulate params from another structure."""
 
-        # accumulate numeric params
-        self.accumulate(**{param: getattr(other, param, 0)
-                           for param in self.numeric_params
-                           if param not in excluded})
+        # accumulate base params
+        for param in self.numeric_params:
 
-        # accumulate layers
-        for layer_num in self.list_params:
-            if (layer_num in other.list_params) and ('layer' in layer_num) and ('names' not in layer_num):
+            if ignore_capital:  # check in additional lower and upper case
+                # check for excluded params
+                check_exclude = 1
+                for exclude in excluded:
+                     if exclude in [param, param.lower(), param.upper()]:
+                         check_exclude = 0
+                         break
+                # check for existance of param in other object
+                check_exist = 0
+                for numeric_param in other.numeric_params:
+                     if numeric_param in [param, param.lower(), param.upper()]:
+                         check_exist = 1
+                         break
+                if check_exclude and check_exist:
+                    # get param from other
+                    if hasattr(other, param):
+                        _p = getattr(other,param)
+                    elif hasattr(other, param.lower()):
+                        _p = getattr(other,param.lower())
+                    elif hasattr(other, param.upper()):
+                        _p = getattr(other,param.upper())
+
+                    # get param from self and set to new accumulated value
+                    if hasattr(self, param):
+                        p = getattr(self,param)
+                        setattr(self, param, p+_p)
+                    elif hasattr(self, param.lower()):
+                        p = getattr(self,param.lower())
+                        setattr(self, param.lower(), p+_p)
+                    elif hasattr(self, param.upper()):
+                        p = getattr(self,param.upper())
+                        setattr(self, param.upper(), p+_p)
+            else:
+                if (param not in excluded) and (param in other.numeric_params):
+                    p = getattr(self,param)
+                    _p = getattr(other,param)
+                    setattr(self, param, p+_p)
+
+        # accumulate layers 1 and above
+        for layer_num in self.dict_params:
+            if (layer_num in other.dict_params):
 
                 layer = getattr(self,layer_num)   # self layer params
                 _layer = getattr(other,layer_num) # other layer params
-                _layer_names = getattr(other,layer_num+'_names') # target params' name
 
-                if not isinstance(layer[0], Cdm): # layer 0
-                    for i, (p, _p) in enumerate(zip(layer, _layer)):  # accumulate _dm to dm in layer
-                        if _layer_names[i] not in ['Dy','Dx','Day','Dax']:
-                            layer[i] += _p
-
-                        elif _layer_names[i] == 'Dy':
-                            dy = p;  _dy = _p
-                            dx = layer[i+1]; _dx = _layer[i+1];
-                            if dx ==0: dx = 1
-                            sum_dydx = (dx + dy*1j) * (_dx + _dy*1j) # summation for complex = complex 1 * complex 2
-                            layer[i] = sum_dydx.imag    # decomposed dy
-                            layer[i+1] = sum_dydx.real  # decomposed dx
-
-                        elif _layer_names[i] == 'Day':
-                            day = p;  _day = _p
-                            dax = layer[i+1]; _dax = _layer[i+1];
-                            if dax ==0: dax = 1
-                            sum_day = day * _day
-                            sum_dax = dax * _dax
-                            sum_daydax = sum_day * sum_dax
-                            layer[i] = sum_daydax.imag    # decomposed day
-                            layer[i+1] = sum_daydax.real  # decomposed dax
-
-                else: # layer 1 and above
-                    for i, (dm, _dm) in enumerate(zip(layer, _layer)):  # accumulate _dm to dm in layer
-                        if _layer_names[i] in ['Vector','aVector']:
-                            if dm.d == 0: dm.d = 1
-                            dm.d *= _dm.d  # summation for complex = complex 1 * complex 2
-                        else:
-                            dm.d += _dm.d
-                        dm.m += _dm.m
+                if len(layer) == len(_layer):  # both layers have the same params
+                    for i, ((param_name,dert), (_param_name,_dert)) in enumerate(zip(layer.items(), _layer.items())):
+                        # accumulate _dert into dert
+                        if not isinstance(dert, Cdert) and isinstance(_dert, Cdert):  # if base param < ave_comp?
+                            layer[param_name] = _dert
+                        elif isinstance(dert, Cdert) and isinstance(_dert, Cdert):
+                            dert.p += _dert.p
+                            dert.d += _dert.d
+                            dert.m += _dert.m
+                elif len(_layer)>0: # _layer is not empty but layer is empty
+                    setattr(self,layer_num,_layer.copy())
 
 
-class Cdm(Number):
-    __slots__ = ('d', 'm')
+    def remove_param(self, other, excluded=()):
+        """Remove params from another structure."""
+        # remove base params
+        for param in self.numeric_params:
+            if (param not in excluded) and (param in other.numeric_params):
+                p = getattr(self,param)
+                _p = getattr(other,param)
+                setattr(self, param, p-_p)
 
-    def __init__(self, d=0, m=0):
-        self.d, self.m = d, m
+    def merge(self, other, self_instance_name, self_instance, excluded = ()):
+        # accumulate numeric params
+        self.accum_from(other,excluded=excluded)
+
+        for list_param in self.list_params: # list params, such as pdert_, P_, sublayers, subDerts
+            if hasattr(other, list_param):
+
+                self_list = getattr(self,list_param)   # get self list param, such as P_, pdert_ and etc
+                other_list = getattr(other,list_param) # get other list param, such as P_, pdert_ and et
+
+                for other_param in other_list: # append each list param to self, for example other.P_ to self.P_
+                    self_list.append(other_param)
+
+                    # update reference, may add in more class later
+                    # for example update other P.Pp to self Pp
+                    if hasattr(other_param, self_instance_name) and isinstance(self, self_instance):
+                        setattr(other_param, self_instance_name, self)
+
+    def copy(self):
+        return deepcopy(self)
+
+class Cdert(Number): # Ppd and Ppdm might not relevant now, so remove it
+    __slots__ = ('i','p','d','m')
+
+    def __init__(self, i=0, p=0, d=0, m=0):
+        self.i, self.p, self.d, self.m = i, p, d, m
 
     def __add__(self, other):
-        return Cdm(self.d + other.d, self.m + other.m)
+        return Cdert(self.i, self.p + other.p, self.d + other.d, self.m + other.m)
 
+    def copy(self):
+        return deepcopy(self)
 
     def __repr__(self):  # representation of object
-        if isinstance(self.d, Cdm) or isinstance(self.m, Cdm):
-            return "Cdm(d=Cdm, m=Cdm)"
+        if isinstance(self.i, Cdert) or isinstance(self.p, Cdert) or isinstance(self.d, Cdert) or isinstance(self.m, Cdert):
+            return "Cdert(i=Cdert, p=Cdert, d=Cdert, m=Cdert)"
         else:
-            return "Cdm(d={}, m={})".format(self.d, self.m)
+            return "Cdert(i={}, p={}, d={}, m={})".format(self.i, self.p, self.d, self.m)
 
 
-def comp_param(param, _param, param_name, ave):
+def comp_param(_param, param, param_name, ave):
 
-    d = param - _param    # difference
-    if param_name == 'I':
-        m = ave - abs(d)  # indirect match
-    else:
-        m = min(param,_param) - abs(d)/2 - ave  # direct match
+    if isinstance(param,list):  # vector
+        sin, cos = param[0], param[1]
+        _sin, _cos = _param[0], _param[1]
+        # difference of dy and dx
+        sin_da = (cos * _sin) - (sin * _cos)  # sin(α - β) = sin α cos β - cos α sin β
+        cos_da= (cos * _cos) + (sin * _sin)   # cos(α - β) = cos α cos β + sin α sin β
+        da = np.arctan2(sin_da, cos_da)
+        ma = ave - abs(da)  # indirect match
+        dert = Cdert(i=param, p=param+_param, d=da, m=ma)  # d=None? p=param+_param will sum lists?
+    else:  # numeric
+        if param_name == 'L' or param_name == 'L_':
+            d = _param/param
+        else:
+            d = param - _param    # difference
+        if param_name == 'I' or param_name == 'I_':
+            m = ave - abs(d)  # indirect match
+        else:
+            m = min(param,_param) - abs(d)/2 - ave  # direct match
+        dert = Cdert(i=param, p=param+_param, d=d, m=m)
 
-    return Cdm(d,m)
+    return dert
 
-def comp_param_complex(dy, dx, _dy, _dx, ave, fda):
 
-    if not fda: # input is dy and dx
+def copy(self):
+    return deepcopy(self)
 
-        a =  dx + 1j * dy; _a = _dx + 1j * _dy # angle in complex form
-        da = a * _a.conjugate()                # angle difference
-        ma = ave - abs(da)
+def remove_param(self, other, excluded=()):
+    """Remove params from another structure."""
+    # remove base params
+    for param in self.numeric_params:
+        if (param not in excluded) and (param in other.numeric_params):
+            p = getattr(self,param)
+            _p = getattr(other,param)
+            setattr(self, param, p-_p)
 
-    else: # dy and dax is day and dax
 
-        dday = dy * _dy.conjugate() # angle difference of complex day
-        ddax = dx * _dx.conjugate() # angle difference of complex dax
-        # formula for sum of angles, ~ angle_diff:
-        # daz = (cos_1*cos_2 - sin_1*sin_2) + j*(cos_1*sin_2 + sin_1*cos_2)
-        #     = (cos_1 + j*sin_1)*(cos_2 + j*sin_2)
-        #     = az1 * az2
-        da = dday * ddax   # sum of angle difference
-        ma = ave - abs(da) # match
+def merge(self, other, self_instance_name, self_instance, excluded = ()):
+    # accumulate numeric params
+    self.accum_from(other,excluded=excluded)
 
-    return Cdm(da,ma)
+    for list_param in self.list_params: # list params, such as pdert_, P_, sublayers, subDerts
+        if hasattr(other, list_param):
+
+            self_list = getattr(self,list_param)   # get self list param, such as P_, pdert_ and etc
+            other_list = getattr(other,list_param) # get other list param, such as P_, pdert_ and et
+
+            for other_param in other_list: # append each list param to self, for example other.P_ to self.P_
+                self_list.append(other_param)
+
+                # update reference, may add in more class later
+                # for example update other P.Pp to self Pp
+                if hasattr(other_param, self_instance_name) and isinstance(self, self_instance):
+                    setattr(other_param, self_instance_name, self)
 
 
 if __name__ == "__main__":  # for tests
@@ -348,35 +459,24 @@ if __name__ == "__main__":  # for tests
         Day = int
         Dax = int
 
-    # blob derivative
-    class CDerBlob(ClusterStructure):
+    # blob derivatives
+    class CderBlob(ClusterStructure):
         mB = int
         dB = int
         blob = object
         _blob = object
 
-
-    # ---- 1st layer  ---------------------------------------------------------
-    # bblob
-    class CBblob(ClusterStructure):
-        I = int
-        Dy = int
-        Dx = int
-        G = int
-        M = int
-        Day = int
-        Dax = int
-        mB = int
-        dB = int
-        derBlob_ = list
+    class CBblob(CBlob, CderBlob):
+        pass
 
     # ---- example  -----------------------------------------------------------
 
     # root layer
     blob1 = CBlob(I=5, Dy=5, Dx=7, G=5, M=6, Day=4 + 5j, Dax=8 + 9j)
-    derBlob1 = CDerBlob(mB=5, dB=5)
+    derBlob1 = CderBlob(mB=5, dB=5)
 
     # example of value inheritance, bblob now will having parameter values from blob1 and derBlob1
-    bblob = CBblob(inherit=[blob1, derBlob1])
+    # In this example, Dy and Dx are excluded from the inheritance
+    bblob = CBblob(inherit=[blob1, derBlob1], excluded=['Dy','Dx'])
 
     print(bblob)

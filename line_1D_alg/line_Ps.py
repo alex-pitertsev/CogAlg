@@ -30,7 +30,7 @@ import pickle
 from time import time
 from matplotlib import pyplot as plt
 from itertools import zip_longest
-from frame_2D_alg.class_cluster import ClusterStructure, NoneType, comp_param
+from class_cluster import ClusterStructure, NoneType, comp_param
 
 class Cdert(ClusterStructure):
     i = int  # input for range_comp only
