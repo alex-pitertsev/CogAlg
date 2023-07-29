@@ -25,12 +25,12 @@ class Cptuple(ClusterStructure):  # bottom-layer tuple of compared params in P, 
 class CP(ClusterStructure):  # horizontal blob slice P, with vertical derivatives per param if derP, always positive
 
     ptuple : list = z([0,0,0,0,0,[0,0],[0,0,0,0],0])  # latuple: I,G,Ga,M,Ma, angle(Dy,Dx), aangle(Dyy,Dyx,Dxy,Dxx), L
-    derH : list = z([])  # [[mtuple,dtuple,mval,dval,mrdn,drdn]] vertical derivatives summed from P links
+    derH : list = z([])  # [[tuplet,valt,rdnt]] vertical derivatives summed from P links
     valt : list = z([0,0])  # summed from the whole derH
     rdnt : list = z([1,1])
     dert_ : list = z([])  # array of pixel-level derts, ~ node_
     link_tH : list = z([[[],[]]])  # +ve rlink_, dlink_ H from lower sub+
-    root_tt : list = z([[None,None],[None,None]])  # rmPP,rdPP, dmPP,ddPP that contain this P, single-layer
+    root_tt : list = z([[None,None],[None,None]])  # PPrm,PPrd, PPdm,PPdd that contain this P, single-layer
     dert_yx_ : list = z([])  # mappings to blob der_t
     dert_olp_: list = z(set())
     axis : list = z([0,1])  # prior slice angle, init sin=0,cos=1
@@ -47,17 +47,14 @@ class CP(ClusterStructure):  # horizontal blob slice P, with vertical derivative
 
 class CderP(ClusterStructure):  # tuple of derivatives in P link: binary tree with latuple root and vertuple forks
 
-    derH : list = z([])  # [[mtuple,dtuple,mval,dval,mrdn,drdn]], single in rng+
+    derH : list = z([])  # [[[mtuple,dtuple],[mval,dval],[mrdn,drdn]]], single in rng+
     valt : list = z([0,0])
     rdnt : list = z([1,1])  # mrdn + uprdn if branch overlap?
     _P : object = None  # higher comparand
     P : object = None  # lower comparand
-    box : list = z([0,0,0,0])  # y0,yn, x0,xn: P.box+_P.box, or center+_center?
     S : float = 0.0  # sparsity: distance between centers
     A : list = z([0,0])  # angle: dy,dx between centers
     # roott : list = z([None, None])  # for der++, if clustering is per link
-    # fdx : object = None  # if comp_dx
-
 '''
 max n of tuples per der layer = summed n of tuples in all lower layers: 1, 1, 2, 4, 8..:
 lay1: par     # derH per param in vertuple, layer is derivatives of all lower layers:
@@ -73,29 +70,30 @@ class CPP(CderP):
     valt : list = z([0,0])
     rdnt : list = z([1,1])
     mask__: object = None
-    node_ : list = z([])  # array of nodes: Ps or sub-PPs in node_tt
-    root_tt : list = z([[None,None],[None,None]])  # higher rmPP,rdPP,dmPP,ddPP that contain this PP, for sub+ only
+    node_ : list = z([])  # P_, or node_tt: [rng+'[sub_PPm_,sub_PPd_], der+'[sub_PPm_,sub_PPd_]]
+    root_tt : list = z([[None,None],[None,None]])  # higher PPrm,PPrd, PPdm,PPdd that contain this PP, for sub+ only
     rng : int = 1  # sum of rng+: odd forks in last layer?
     box : list = z([0,0,0,0])  # y0,yn,x0,xn
     # temporary:
-    fback_t : list = z([[],[]])  # [feedback derH,valt,rdnt per node]
+    fback_ : list = z([])  # [feedback derH,valt,rdnt per node]
     coPP_ : list = z([])  # rdn reps in other PPPs, to eval and remove?
     Rdn : int = 0  # for accumulation or separate recursion count?
     # fdiv = NoneType  # if div_comp?
 
 class Cgraph(ClusterStructure):  # params of single-fork node_ cluster per pplayers
 
-    fd: int = 0  # not fder?
-    link_tH : list = z([[[],[]]])  # +ve rlink_, dlink_ H, ~ derH layers
-    # top aggLay: derH from links, lower aggH from nodes, only top Lay in derG:
-    derH : list = z([[]])  # [[[mtuple,dtuple, mval,dval, mrdn,drdn]]]: cross-fork composition layers
-    id_H : list = z([[]])  # indices in the list of all possible layers | forks, for sparse representation?
-    # also top Lay from links, lower Lays from nodes, hence nested tuple:
+    fd: int = 0  # not fder
+    link_tH : list = z([[[],[]]])  # rng H with +ve (rlink_,dlink_) layers
+    ptuple : list = z([])  # default from P
+    derH : list = z([])  # [[tuplet, valt, rdnt]]: default from PP, for both rng+ and der+, sum min len?
+    aggH : list = z([])  # [[subH_t, valt, rdnt]], subH: [[derH_t, valt, rdnt]]; cross-fork composition layers
     valt : list = z([0,0])
-    rdnt : list = z([[1,1]])
-    node_: list = z([])  # same-fork, incremental nesting if wH: down-forking tree of node Levs, forks in id_T?
-    root: object= None  # root_: list = z([])  # agg|sub+ mset forks, incr.nest if uH: up-forking tree of root Levs, separate id_T for feedback?
-    # external params, summed from links:
+    rdnt : list = z([1,1])
+    node_ : list = z([])  # same-fork, incremental nesting if wH: down-forking tree of node Levs, 4 top forks if sub+:
+    # node_tt: list = z([[[],[]],[[],[]]])  # rng+'Gm_,Gd_, der+'Gm_,Gd_, may not overlap
+    root: object= None  # root_: list = z([])  # agg|sub+ mset forks, incr.nest if uH: up-forking tree of root Levs,
+    # root_tt: list = z([[None,None],[None,None]])  # rng+'Gm,Gd, der+'Gm,Gd, if both comp and form are overlapping
+    L : int  # len base node_; from internal links:
     S : float = 0.0  # sparsity: average distance to link centers
     A : list = z([0,0])  # angle: average dy,dx to link centers
     rng : int = 1
@@ -104,11 +102,20 @@ class Cgraph(ClusterStructure):  # params of single-fork node_ cluster per pplay
     alt_graph_: list = z([])  # adjacent gap+overlap graphs, vs. contour in frame_graphs
     alt_Graph : object = None  # conditional, summed and concatenated params of alt_graph_
     # temporary:
-    fback_t : list = z([[], []])  # [feedback derT,valT,rdnT per node]
+    compared_ : list = z([])
+    fback_ : list = z([])  # [feedback aggH,valt,rdnt per node]
     Rdn : int = 0  # for accumulation or separate recursion count?
-    ''' 
-    ext / agg.sub.derH:
-    L : list = z([])  # der L, init None
-    S : int = 0  # sparsity: ave len link
-    A : list = z([])  # area|axis: Dy,Dx, ini None
-    '''
+
+    # id_H : list = z([[]])  # indices in the list of all possible layers | forks, not used with fback merging
+    # top aggLay: derH from links, lower aggH from nodes, only top Lay in derG:
+    # top Lay from links, lower Lays from nodes, hence nested tuple?
+
+class CderG(ClusterStructure):  # params of single-fork node_ cluster per pplayers
+
+    subH : list = z([])  # [[derH_t, valt, rdnt]]: top aggLev derived in comp_G
+    valt : list = z([0,0])
+    rdnt : list = z([1,1])
+    G0 : object = None  # comparand
+    G1 : object = None
+    S : float = 0.0  # sparsity: average distance to link centers
+    A : list = z([0,0])  # angle: average dy,dx to link centers
