@@ -31,7 +31,7 @@ import csv
 from time import time
 from matplotlib import pyplot as plt
 from itertools import zip_longest
-from frame_2D_alg.class_cluster import ClusterStructure, NoneType, comp_param
+from class_cluster import ClusterStructure, NoneType, comp_param
 
 class Cdert(ClusterStructure):
     i = int  # input for range_comp only
@@ -121,7 +121,6 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
             P.dert_ += [dert]
         x += 1
         _sign = sign
-        
     '''
     due to separate aves, P may be processed by both or neither of r fork and d fork
     add separate rsublayers and dsublayers?
@@ -301,6 +300,7 @@ if __name__ == "__main__":
     Y, X = image.shape  # Y: frame height, X: frame width
     frame = []
     for y in range(init_y, min(halt_y, Y)):  # y is index of new row pixel_, we only need one row, use init_y=0, halt_y=Y for full frame
+
         # with open("./julia/500th_line_log_py.csv", "a") as csvFile_0:
         #     write = csv.writer(csvFile_0, delimiter=",")
         #     for id, val in enumerate(image[y,:]):

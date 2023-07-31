@@ -252,7 +252,7 @@ if __name__ == "__main__":
     frame = []
     for y in range(init_y, min(halt_y, Y)):  # y is index of new row pixel_, we only need one row, use init_y=0, halt_y=Y for full frame
 
-        line = line_Ps_root( image[y,:])  # line = [Pm_, Pd_]
+        line = line_Ps_root(image[y,:])  # line = [Pm_, Pd_]
         if fline_PPs:
             from line_PPs import line_PPs_root
             line = line_PPs_root([line])  # line = CPp, sublayers[0] is a flat 16-tuple of P_s,
