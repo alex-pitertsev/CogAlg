@@ -206,8 +206,7 @@ if logging == 3
     CSV.write("./layer2_Pm_log_jl.csv", Tables.table(parameter_names), writeheader=false)
 end
 
-# image_path = "./line_1D_alg/raccoon.jpg";
-image_path = "/home/alex/Python/CogAlg/line_1D_alg/raccoon.jpg";
+image_path = "../raccoon.jpg";
 image = nothing
 
 # check if image exist

@@ -293,7 +293,8 @@ if __name__ == "__main__":
 
     start_time = time()
     # image = cv2.imread('./raccoon.jpg', 0).astype(int)  # manual load pix-mapped image
-    image = cv2.imread('./raccoon_gray.jpg', 0).astype(int)  # manual load pix-mapped image
+    grayscale_image = cv2.imread('raccoon_gray.jpg', cv2.IMREAD_GRAYSCALE).astype(int)
+    image = grayscale_image; # Temporary using grayscale for compartibility with Julia version
     assert image is not None, "No image in the path"
 
     # Main
