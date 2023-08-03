@@ -29,7 +29,6 @@ mutable struct Cdert_
     mrdn::Bool
 end
 
-
 # mutable struct Sublayers
 #     L::Int32
 #     I::Int32
@@ -74,22 +73,20 @@ halt_y = 501  # ending row, set 999999999 for arbitrary image.
 
 function range_incr_P_(rootP, P_, rdn, rng)
 
-    comb_sublayers = []  #+ The same notation 
+    comb_sublayers = []  # The same notation 
     for (id, P) in enumerate(P_)
-        # if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2  # M value adjusted for xP and higher-layers redundancy
-        # if P.M - P.Rdn * ave_M * P.L > ave_M * rdn #and P.L > 2  # M value adjusted for xP and higher-layers redundancy
-            """ P is Pm   
-            min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
-            """
-            rdn += 1; rng += 1
-            P.subset = [rdn, rng, [], [], [], []]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
-            sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
-            P.sublayers = [sub_Pm_, sub_Pd_]  # 1st layer
+        if P.M - P.Rdn * ave_M * P.L > ave_M * rdn && P.L > 2  # M value adjusted for xP and higher-layers redundancy
+            # println(ave_M)
+            rdn += 1
+            rng += 1
+            push!(P.subset, [rdn, rng, [], [], [], []])
+            sub_Pm_, sub_Pd_ = ([], [])  # initialize layers, concatenate by intra_P_ in form_P_
+            push!(P.sublayers, (sub_Pm_, sub_Pd_))  # 1st layer
             rdert_ = []
             _i = P.dert_[1].i #! differs from python, starting with 1
-        # end
-            for dert in P.dert_[3:2:end]  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
-    #             # skip predictable next dert, local ave? add rdn to higher | stronger layers:
+            #         for dert in P.dert_[3:2:end]  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
+            for (id2, dert) in enumerate(P.dert_[3:2:end])  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
+                    # skip predictable next dert, local ave? add rdn to higher | stronger layers:
                 d = dert.i - _i
                 rp = dert.p + _i  # intensity accumulated in rng
                 rd = dert.d + d  # difference accumulated in rng
@@ -98,33 +95,38 @@ function range_incr_P_(rootP, P_, rdn, rng)
                 push!(rdert_, Cdert_(dert.i, rp, rd, rm, rmrdn))
                 _i = dert.i
             end
-
-            if logging == 3
-                CSV.write("./layer3_log_jl.csv", rdert_, append = true, )
+            
+            # if logging == 3
+            #     CSV.write("./layer3_log_jl.csv", rdert_, append=true,)
+            # end
+            
+            sub_Pm_[:] .= form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=false) # In Julia .= does modifying elements in place
+            sub_Pd_[:] .= form_P(P, rdert_, rdn=rdn, rng=rng, fPd=true)  # cluster by rd sign
+        end
+   
+        if !isnothing(rootP) && !isnothing(P.sublayers)
+            new_comb_sublayers = []
+            for ((comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_)) in zip_longest(comb_sublayers, P.sublayers, ([], []))
+                comb_sub_Pm_ .+= sub_Pm_  # Element-wise addition, no need for brackets
+                comb_sub_Pd_ .+= sub_Pd_
+                push!(new_comb_sublayers, (comb_sub_Pm_, comb_sub_Pd_))  # Add sublayer to the new_comb_sublayers array
             end
-
-            sub_Pm_ = form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=false)
-            # sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
-            sub_Pd_ = form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=true)
-    #         sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
-    #     if rootP and P.sublayers:
-    #         new_comb_sublayers = []
-    #         for (comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_) in zip_longest(comb_sublayers, P.sublayers, fillvalue=([],[])):
-    #             comb_sub_Pm_ += sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
-    #             comb_sub_Pd_ += sub_Pd_
-    #             new_comb_sublayers.append((comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
-    #         comb_sublayers = new_comb_sublayers
+            comb_sublayers = new_comb_sublayers
+        end
     end
-    # if rootP:
-    #     rootP.sublayers += comb_sublayers  # no return
-    # end
+        # if rootP:
+        #         rootP.sublayers += comb_sublayers  # no return
+        # end
+        if !isnothing(rootP)
+            rootP.sublayers .= rootP.sublayers .+ comb_sublayers
+        end
 end
 
 
 function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keyword args are placed
     # initialization:
     P_ = CP[]  # structure to store all the form_P (layer1) output
-        x = 0
+    x = 0
     _sign = nothing  # to initialize 1st P, (nothing != True) and (nothing != False) are both True
 
     for dert in dert_  # segment by sign
@@ -136,11 +138,21 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
 
         if sign != _sign
             # sign change, initialize and append P
-            L = 1; I = dert.p; D = dert.d; M = dert.m; Rdn = dert.mrdn + 1; x0 = x; sublayers = [] # Rdn starts from 1
+            L = 1
+            I = dert.p
+            D = dert.d
+            M = dert.m
+            Rdn = dert.mrdn + 1
+            x0 = x
+            sublayers = [] # Rdn starts from 1
             push!(P_, CP(L, I, D, M, Rdn, x0, [dert], [], []))  # save data in the struct
         else
             # accumulate params:
-            P_[end].L += 1; P_[end].I += dert.p; P_[end].D += dert.d; P_[end].M += dert.m; P_[end].Rdn += dert.mrdn
+            P_[end].L += 1
+            P_[end].I += dert.p
+            P_[end].D += dert.d
+            P_[end].M += dert.m
+            P_[end].Rdn += dert.mrdn
             push!(P_[end].dert_, dert)
         end
         x += 1
@@ -156,13 +168,13 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
     if logging == 2
         if fPd == false
             # CSV.write("./layer2_Pm_log_jl.csv", P_, header = true, append = true)
-            CSV.write("./layer2_Pm_log_jl.csv", P_, append = true)
+            CSV.write("./layer2_Pm_log_jl.csv", P_, append=true)
         else
             # CSV.write("./layer2_Pd_log_jl.csv", P_, header = true, append = true)
-            CSV.write("./layer2_Pd_log_jl.csv", P_, append = true)
+            CSV.write("./layer2_Pd_log_jl.csv", P_, append=true)
         end
     end
-    
+
     return P_  # used only if not rootP, else packed in rootP.sublayers
 end
 
@@ -180,8 +192,8 @@ function line_Ps_root(pixel_)  # Ps: patterns, converts frame_of_pixels to frame
     end
 
     # form patterns, evaluate them for rng+ and der+ sub-recursion of cross_comp:
-    Pm_ = form_P_(nothing, dert_, rdn = 1, rng = 1, fPd = false)  # rootP=None, eval intra_P_ (calls form_P_)
-    Pd_ = form_P_(nothing, dert_, rdn = 1, rng = 1, fPd = true)
+    Pm_ = form_P_(nothing, dert_, rdn=1, rng=1, fPd=false)  # rootP=None, eval intra_P_ (calls form_P_)
+    Pd_ = form_P_(nothing, dert_, rdn=1, rng=1, fPd=true)
 
     if logging == 1
         CSV.write("./layer1_log_jl.csv", dert_)
@@ -194,10 +206,11 @@ end
 render = 0
 fline_PPs = 0
 frecursive = 0
-logging = 1  # logging of local functions variables
+logging = 2  # logging of local functions variables
 
 if logging == 2
     parameter_names = ["L" "I" "D" "M" "Rdn" "x0" "dert_" "subset" "sublayers"]  # Vector
+    CSV.write("./layer2_Pd_log_jl.csv", Tables.table(parameter_names), writeheader=false)
     CSV.write("./layer2_Pm_log_jl.csv", Tables.table(parameter_names), writeheader=false)
 end
 
@@ -206,17 +219,19 @@ if logging == 3
     CSV.write("./layer2_Pm_log_jl.csv", Tables.table(parameter_names), writeheader=false)
 end
 
-image_path = "../raccoon.jpg";
-image = nothing
+# image_path = "../raccoon.jpg";
+image_path = "../raccoon_gray.jpg";
+# image = nothing
+gray_image = nothing
 
-# check if image exist
 if isfile(image_path)
-    image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
+    # image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
+    gray_image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
 else
     println("ERROR: Image not found!")
 end
 
-gray_image = Gray.(image)  # convert rgb N0f8 to gray N0f8 array of cells
+# gray_image = Gray.(image)  # convert rgb N0f8 to gray N0f8 array of cells
 img_channel_view = channelview(gray_image)  # transform to the array of N0f8 numbers
 gray_image_int = convert.(Int, trunc.(img_channel_view .* 255))  # finally get array of 0...255 numbers
 # imshow(gray_image)

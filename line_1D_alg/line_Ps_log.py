@@ -96,8 +96,8 @@ def line_Ps_root(pixel_):  # Ps: patterns, converts frame_of_pixels to frame_of_
                 write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
 
     # form patterns, evaluate them for rng+ and der+ sub-recursion of cross_comp:
-    # Pm_ = form_P_(None, dert_, rdn=1, rng=1, fPd=False)  # rootP=None, eval intra_P_ (calls form_P_)
-    # Pd_ = form_P_(None, dert_, rdn=1, rng=1, fPd=True)
+    Pm_ = form_P_(None, dert_, rdn=1, rng=1, fPd=False)  # rootP=None, eval intra_P_ (calls form_P_)
+    Pd_ = form_P_(None, dert_, rdn=1, rng=1, fPd=True)
 
     # return [Pm_, Pd_]  # input to 2nd level
 
@@ -126,7 +126,7 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     add separate rsublayers and dsublayers?
     '''
     range_incr_P_(rootP, P_, rdn, rng)
-    deriv_incr_P_(rootP, P_, rdn, rng)
+    # deriv_incr_P_(rootP, P_, rdn, rng)
     if logging == 2:
         if fPd == False:
             logfile_name = "./julia/layer2_Pm_log_py.csv"
@@ -146,13 +146,7 @@ def range_incr_P_(rootP, P_, rdn, rng):
     comb_sublayers = []
     for P in P_:
         if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
-            ''' P is Pm   
-            min skipping P.L=3, actual comp rng = 2^(n+1): 1, 2, 3 -> kernel size 4, 8, 16...
-            if local ave:
-            loc_ave = (ave + (P.M - adj_M) / P.L) / 2  # mean ave + P_ave, possibly negative?
-            loc_ave_min = (ave_min + (P.M - adj_M) / P.L) / 2  # if P.M is min?
-            rdert_ = range_comp(P.dert_, loc_ave, loc_ave_min, fid)
-            '''
+            # print(ave_M) ### test
             rdn += 1; rng += 1
             P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
             sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
@@ -160,7 +154,7 @@ def range_incr_P_(rootP, P_, rdn, rng):
             rdert_ = []
             _i = P.dert_[0].i
             for dert in P.dert_[2::2]:  # all inputs are sparse, skip odd pixels compared in prior rng: 1 skip / 1 add to maintain 2x overlap
-                # skip predictable next dert, local ave? add rdn to higher | stronger layers:
+            #     # skip predictable next dert, local ave? add rdn to higher | stronger layers:
                 d = dert.i - _i
                 rp = dert.p + _i  # intensity accumulated in rng
                 rd = dert.d + d  # difference accumulated in rng
@@ -169,11 +163,11 @@ def range_incr_P_(rootP, P_, rdn, rng):
                 rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
                 _i = dert.i
 
-                if logging == 3:
-                    with open("./julia/layer3_log_py.csv", "a") as csvFile_4:
-                        write = csv.writer(csvFile_4, delimiter=",")
-                        for id, val in enumerate(rdert_):
-                            write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
+            #     if logging == 3:
+            #         with open("./julia/layer3_log_py.csv", "a") as csvFile_4:
+            #             write = csv.writer(csvFile_4, delimiter=",")
+            #             for id, val in enumerate(rdert_):
+            #                 write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
 
             sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
             sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
@@ -266,7 +260,7 @@ if __name__ == "__main__":
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 1  # logging of level 1 or level 2 data structuring
+    logging = 2  # logging of level 1 or level 2 data structuring
 
     if logging == 1:
         parameter_names = ["i", "p", "d", "m", "mrdn"]
