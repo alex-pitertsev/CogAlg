@@ -18,7 +18,7 @@
   These forks here are exclusive per P to avoid redundancy, but they do overlap in line_patterns_olp.
 """
 
-using Images, ImageView, CSV, Tables
+using Images, ImageView, CSV, Tables, IterTools
 
 # instead of the class in Python version in Julia values are stored in the struct
 mutable struct Cdert_
@@ -27,16 +27,12 @@ mutable struct Cdert_
     d::Int
     m::Int
     mrdn::Bool
-end
 
-# mutable struct Sublayers
-#     L::Int32
-#     I::Int32
-#     D::Int32
-#     M::Int32  # summed ave - abs(d), different from D
-#     Rdn::Int32  # 1 + binary dert.mrdn cnt / len(dert_)
-#     x0::Int32
-# end
+     # Constructor to handle both Float64 and Int for m
+    # function Cdert_(i::Int, p::Int, d::Int, m::Real, mrdn::Bool)
+    #     new(i, p, d, m, mrdn)
+    # end
+end
 
 mutable struct CP
     L::Int
@@ -71,12 +67,12 @@ halt_y = 501  # ending row, set 999999999 for arbitrary image.
     longer names are normally classes
 """
 
+
 function range_incr_P_(rootP, P_, rdn, rng)
 
     comb_sublayers = []  # The same notation 
     for (id, P) in enumerate(P_)
         if P.M - P.Rdn * ave_M * P.L > ave_M * rdn && P.L > 2  # M value adjusted for xP and higher-layers redundancy
-            # println(ave_M)
             rdn += 1
             rng += 1
             push!(P.subset, [rdn, rng, [], [], [], []])
@@ -95,13 +91,8 @@ function range_incr_P_(rootP, P_, rdn, rng)
                 push!(rdert_, Cdert_(dert.i, rp, rd, rm, rmrdn))
                 _i = dert.i
             end
-            
-            # if logging == 3
-            #     CSV.write("./layer3_log_jl.csv", rdert_, append=true,)
-            # end
-            
             sub_Pm_[:] .= form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=false) # In Julia .= does modifying elements in place
-            sub_Pd_[:] .= form_P(P, rdert_, rdn=rdn, rng=rng, fPd=true)  # cluster by rd sign
+            sub_Pd_[:] .= form_P_(P, rdert_, rdn=rdn, rng=rng, fPd=true)  # cluster by rd sign
         end
    
         if !isnothing(rootP) && !isnothing(P.sublayers)
@@ -114,12 +105,55 @@ function range_incr_P_(rootP, P_, rdn, rng)
             comb_sublayers = new_comb_sublayers
         end
     end
-        # if rootP:
-        #         rootP.sublayers += comb_sublayers  # no return
-        # end
-        if !isnothing(rootP)
-            rootP.sublayers .= rootP.sublayers .+ comb_sublayers
+
+    if !isnothing(rootP)
+        rootP.sublayers .= rootP.sublayers .+ comb_sublayers
+    end
+end
+
+
+function deriv_incr_P_(rootP, P_, rdn, rng)
+
+    comb_sublayers = []  # The same notation 
+    for (id, P) in enumerate(P_)
+        if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn && P.L > 1  # high-D span, ave_adj_M is represented in ave_D
+            rdn += 1; rng += 1
+            push!(P.subset, [rdn, rng, [], [], [], []])  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
+            sub_Pm_, sub_Pd_ = ([], [])  # initialize layers, concatenate by intra_P_ in form_P_
+            push!(P.sublayers, (sub_Pm_, sub_Pd_))  # 1st layer
+            ddert_ = []
+            _d = abs(P.dert_[1].d) #! differs from python, starting with 1
+            for (id2, dert) in enumerate(P.dert_[2:end])  # all same-sign in Pd
+                d = abs(dert.d)  # compare ds
+                rd = d + _d
+                dd = d - _d
+                md = min(d, _d) - abs(dd / 2) - ave_min  # min_match because magnitude of derived vars corresponds to predictive value
+                # md = convert(Int64, round(min(d, _d) - abs(dd) / 2 - ave_min)) #! Different from Python, type conversion required
+                dmrdn = md < 0
+                push!(ddert_, Cdert_(dert.d, rd, dd, md, dmrdn))
+                _d = d
+            end
+            # sub_Pm_[:] .= form_P_(P, ddert_, rdn=rdn, rng=rng, fPd=false)  # cluster by mm sign
+            # sub_Pd_[:] .= form_P_(P, ddert_, rdn=rdn, rng=rng, fPd=true)  # cluster by md sign
+            push!(sub_Pm_, form_P_(P, ddert_, rdn=rdn, rng=rng, fPd=false))  # cluster by mm sign
+            push!(sub_Pd_, form_P_(P, ddert_, rdn=rdn, rng=rng, fPd=true))  # cluster by md sign
         end
+   
+        if !isnothing(rootP) && !isnothing(P.sublayers) && length(comb_sublayers) > 0
+            new_comb_sublayers = []
+            for ((comb_sub_Pm_, comb_sub_Pd_), (sub_Pm_, sub_Pd_)) in zip_longest(comb_sublayers, P.sublayers, ([], []))
+                comb_sub_Pm_ .+= sub_Pm_  # remove brackets, they preserve index in sub_Pp root_
+                comb_sub_Pd_ .+= sub_Pd_
+                push!(new_comb_sublayers, (comb_sub_Pm_, comb_sub_Pd_))  # add sublayer
+            end
+            comb_sublayers = new_comb_sublayers
+        end
+    end
+    
+    if !isnothing(rootP)
+        # rootP.sublayers .= rootP.sublayers .+ comb_sublayers
+        push!(rootP.sublayers, comb_sublayers)
+    end
 end
 
 
@@ -163,8 +197,8 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
     due to separate aves, P may be processed by both or neither of r fork and d fork
     add separate rsublayers and dsublayers?
     """
-    range_incr_P_(rootP, P_, rdn, rng)
-    # deriv_incr_P_(rootP, P_, rdn, rng)
+    # range_incr_P_(rootP, P_, rdn, rng)
+    deriv_incr_P_(rootP, P_, rdn, rng)
     if logging == 2
         if fPd == false
             # CSV.write("./layer2_Pm_log_jl.csv", P_, header = true, append = true)
@@ -177,6 +211,7 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
 
     return P_  # used only if not rootP, else packed in rootP.sublayers
 end
+
 
 function line_Ps_root(pixel_)  # Ps: patterns, converts frame_of_pixels to frame_of_patterns, each pattern may be nested
     dert_ = Cdert_[] # line-wide i_, p_, d_, m_, mrdn_

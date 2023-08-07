@@ -125,8 +125,8 @@ def form_P_(rootP, dert_, rdn, rng, fPd):  # accumulation and termination, rdn a
     due to separate aves, P may be processed by both or neither of r fork and d fork
     add separate rsublayers and dsublayers?
     '''
-    range_incr_P_(rootP, P_, rdn, rng)
-    # deriv_incr_P_(rootP, P_, rdn, rng)
+    # range_incr_P_(rootP, P_, rdn, rng)
+    deriv_incr_P_(rootP, P_, rdn, rng)
     if logging == 2:
         if fPd == False:
             logfile_name = "./julia/layer2_Pm_log_py.csv"
@@ -146,7 +146,6 @@ def range_incr_P_(rootP, P_, rdn, rng):
     comb_sublayers = []
     for P in P_:
         if P.M - P.Rdn * ave_M * P.L > ave_M * rdn and P.L > 2:  # M value adjusted for xP and higher-layers redundancy
-            # print(ave_M) ### test
             rdn += 1; rng += 1
             P.subset = rdn, rng, [],[],[],[]  # 1st sublayer params, []s: xsub_pmdertt_, _xsub_pddertt_, sub_Ppm_, sub_Ppd_
             sub_Pm_, sub_Pd_ = [], []  # initialize layers, concatenate by intra_P_ in form_P_
@@ -162,13 +161,6 @@ def range_incr_P_(rootP, P_, rdn, rng):
                 rmrdn = rm < 0
                 rdert_.append(Cdert(i=dert.i, p=rp, d=rd, m=rm, mrdn=rmrdn))
                 _i = dert.i
-
-            #     if logging == 3:
-            #         with open("./julia/layer3_log_py.csv", "a") as csvFile_4:
-            #             write = csv.writer(csvFile_4, delimiter=",")
-            #             for id, val in enumerate(rdert_):
-            #                 write.writerow([val.i, val.p, val.d, val.m, val.mrdn])
-
             sub_Pm_[:] = form_P_(P, rdert_, rdn, rng, fPd=False)  # cluster by rm sign
             sub_Pd_[:] = form_P_(P, rdert_, rdn, rng, fPd=True)  # cluster by rd sign
 
@@ -186,8 +178,6 @@ def range_incr_P_(rootP, P_, rdn, rng):
 def deriv_incr_P_(rootP, P_, rdn, rng):
 
     comb_sublayers = []
-    # adj_M_ = form_adjacent_M_(P_)  # compute adjacent Ms to evaluate contrastive borrow potential; but lend is not to adj only, reflected in ave?:
-    # for P, adj_M in zip(P_, adj_M_); rel_adj_M = adj_M / -P.M  # allocate -Pm' adj_M in internal Pds; vs.:
     for P in P_:
         if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
             rdn += 1; rng += 1
