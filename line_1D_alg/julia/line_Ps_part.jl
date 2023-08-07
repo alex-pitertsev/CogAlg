@@ -25,20 +25,15 @@ mutable struct Cdert_
     i::Int
     p::Int
     d::Int
-    m::Int
+    m::Real
     mrdn::Bool
-
-     # Constructor to handle both Float64 and Int for m
-    # function Cdert_(i::Int, p::Int, d::Int, m::Real, mrdn::Bool)
-    #     new(i, p, d, m, mrdn)
-    # end
 end
 
 mutable struct CP
     L::Int
     I::Int
     D::Int
-    M::Int # summed ave - abs(d), different from D
+    M::Real # summed ave - abs(d), different from D
     Rdn::Int  # 1 + binary dert.mrdn cnt / len(dert_)
     x0::Int
     dert_::Vector{Cdert_}  # contains (i, p, d, m, mrdn)
