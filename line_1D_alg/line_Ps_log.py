@@ -177,6 +177,13 @@ def range_incr_P_(rootP, P_, rdn, rng):
 
 def deriv_incr_P_(rootP, P_, rdn, rng):
 
+    if logging == 3:
+        with open("./julia/layer3_log_py.csv", "a") as csvFile_4:
+            write = csv.writer(csvFile_4, delimiter=",")
+            for id, val in enumerate(P_):
+                write.writerow([val.L, val.I, val.D, val.M, val.Rdn, val.x0, val.dert_, val.subset, val.sublayers])
+
+
     comb_sublayers = []
     for P in P_:
         if abs(P.D) - (P.L - P.Rdn) * ave_D * P.L > ave_D * rdn and P.L > 1:  # high-D span, ave_adj_M is represented in ave_D
@@ -250,7 +257,7 @@ if __name__ == "__main__":
     render = 0
     fline_PPs = 0
     frecursive = 0
-    logging = 2  # logging of level 1 or level 2 data structuring
+    logging = 3  # logging of level 1 or level 2 data structuring
 
     if logging == 1:
         parameter_names = ["i", "p", "d", "m", "mrdn"]
@@ -269,7 +276,7 @@ if __name__ == "__main__":
             write.writerow(parameter_names)
 
     if logging == 3:
-        parameter_names = ["i", "p", "d", "m", "mrdn"]
+        parameter_names = ["L", "I", "D", "M", "Rdn", "x0", "dert_","subset", "sublayers"]
         with open("./julia/layer3_log_py.csv", "w") as csvFile_4:
             write = csv.writer(csvFile_4, delimiter=",")
             write.writerow(parameter_names)
@@ -288,8 +295,11 @@ if __name__ == "__main__":
 
         # with open("./julia/500th_line_log_py.csv", "a") as csvFile_0:
         #     write = csv.writer(csvFile_0, delimiter=",")
-        #     for id, val in enumerate(image[y,:]):
-        #         write.writerow([val])
+        #     # Creating a list of values from the image slice
+        #     values = [val for id, val in enumerate(image[y, :])]
+        #     # Write the list of values as a single row
+        #     write.writerow(values)
+
         line = line_Ps_root(image[y,:])  # line = [Pm_, Pd_]
         if fline_PPs:
             from line_PPs import line_PPs_root
