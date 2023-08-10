@@ -192,6 +192,15 @@ function form_P_(rootP, dert_; rdn, rng, fPd)  # after semicolon in Julia keywor
     """
     range_incr_P_(rootP, P_, rdn, rng)
     deriv_incr_P_(rootP, P_, rdn, rng)
+    if logging == 2
+        if fPd == false
+            # CSV.write("./layer2_Pm_log_jl.csv", P_, header = true, append = true)
+            CSV.write("./layer2_Pm_log_jl.csv", P_, append=true)
+        else
+            # CSV.write("./layer2_Pd_log_jl.csv", P_, header = true, append = true)
+            CSV.write("./layer2_Pd_log_jl.csv", P_, append=true)
+        end
+    end
 
     return P_  # used only if not rootP, else packed in rootP.sublayers
 end
