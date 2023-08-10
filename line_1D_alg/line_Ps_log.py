@@ -1,3 +1,4 @@
+
 '''
   line_Ps is a principal version of 1st-level 1D algorithm
   Operations:
