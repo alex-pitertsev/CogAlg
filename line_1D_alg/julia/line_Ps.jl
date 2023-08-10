@@ -18,7 +18,7 @@
   These forks here are exclusive per P to avoid redundancy, but they do overlap in line_patterns_olp.
 """
 
-using Images, ImageView, CSV, Tables, IterTools
+using Images, ImageView, IterTools
 
 # instead of the class in Python version in Julia values are stored in the struct
 mutable struct Cdert_
@@ -225,55 +225,30 @@ end
 render = 0
 fline_PPs = 0
 frecursive = 0
-logging = 2  # logging of local functions variables
-debug_mode = 0
 
-if logging == 2
-    parameter_names = ["L" "I" "D" "M" "Rdn" "x0" "dert_" "subset" "sublayers"]  # Vector
-    CSV.write("./layer2_Pd_log_jl.csv", Tables.table(parameter_names), writeheader=false)
-    CSV.write("./layer2_Pm_log_jl.csv", Tables.table(parameter_names), writeheader=false)
+# image_path = "../raccoon.jpg";
+image_path = "../raccoon_gray.jpg"
+# image = nothing
+gray_image = nothing
+
+if isfile(image_path)
+    # image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
+    gray_image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
+else
+    println("ERROR: Image not found!")
 end
 
+# gray_image = Gray.(image)  # convert rgb N0f8 to gray N0f8 array of cells
+# imshow(gray_image)
+img_channel_view = channelview(gray_image)  # transform to the array of N0f8 numbers
+gray_image_int = convert.(Int, trunc.(img_channel_view .* 255))  # finally get array of 0...255 numbers
 
-if debug_mode == 0
-    # image_path = "../raccoon.jpg";
-    image_path = "../raccoon_gray.jpg"
-    # image = nothing
-    gray_image = nothing
+# Main
+Y, X = size(gray_image) # Y: frame height, X: frame width
+frame = []
 
-    if isfile(image_path)
-        # image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
-        gray_image = load(image_path)  # read as N0f8 (normed 0...1) type array of cells
-    else
-        println("ERROR: Image not found!")
-    end
-
-    # gray_image = Gray.(image)  # convert rgb N0f8 to gray N0f8 array of cells
-    # imshow(gray_image)
-    img_channel_view = channelview(gray_image)  # transform to the array of N0f8 numbers
-    gray_image_int = convert.(Int, trunc.(img_channel_view .* 255))  # finally get array of 0...255 numbers
-
-    if logging == 2
-        tbl = Tables.table(permutedims(gray_image_int[init_y, :]))
-        CSV.write("./500th_line_log_jl.csv", tbl, writeheader=false)
-    end
-
-    # Main
-    Y, X = size(gray_image) # Y: frame height, X: frame width
-    frame = []
-
-    # y is index of new row pixel_, we only need one row, use init_y=1, halt_y=Y for full frame
-    for y = init_y:min(halt_y, Y)
-        line_Ps_root(gray_image_int[y, :])  # line = [Pm_, Pd_]
-        # print(gray_image_int[y, :])
-    end
-end
-
-
-if debug_mode == 1
-    df = CSV.read("./500th_line_log_jl.csv", DataFrame)
-    gray_image_single_row = Matrix{Int64}(df)
-    for y = init_y:min(halt_y, halt_y)
-        line_Ps_root(gray_image_single_row)
-    end
+# y is index of new row pixel_, we only need one row, use init_y=1, halt_y=Y for full frame
+for y = init_y:min(halt_y, Y)
+    line_Ps_root(gray_image_int[y, :])  # line = [Pm_, Pd_]
+    # print(gray_image_int[y, :])
 end
